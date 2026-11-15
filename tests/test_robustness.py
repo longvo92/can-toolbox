@@ -7,10 +7,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.core.discovery import discover_dbc_pairs
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
-from dbc_compare_tool.core.parser import DbcParseError, parse_dbc
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.discovery import discover_dbc_pairs
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc
 
 _GOOD_DBC = """VERSION ""
 

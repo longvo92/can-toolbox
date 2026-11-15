@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.core.parser import DbcParseError, parse_dbc, validate_database
+from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc, validate_database
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 _OLD_BUS_A = _EXAMPLES / "old" / "Bus_A.dbc"

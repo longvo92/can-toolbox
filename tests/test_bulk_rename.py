@@ -10,9 +10,9 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.cli import main
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 # Synthetic data, not a production transport-protocol definition.

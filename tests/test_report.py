@@ -16,10 +16,10 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from functools import partial
 
-from dbc_compare_tool.i18n import reason_text, translate
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.models import Change, ComparisonResult, FilePairSummary
-from dbc_compare_tool.report.excel import (
+from can_toolbox.i18n import reason_text, translate
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, FilePairSummary
+from can_toolbox.dbc_compare.report.excel import (
     ReportExportError,
     _write_signal_details,
     default_report_path,
@@ -253,7 +253,7 @@ class ReportRowLimitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "report.xlsx"
             result = ComparisonResult(signal_changes=self.signal_changes(63))
-            with patch("dbc_compare_tool.report.excel.EXCEL_MAX_ROWS", 64):
+            with patch("can_toolbox.dbc_compare.report.excel.EXCEL_MAX_ROWS", 64):
                 write_excel_report(result, output)
                 workbook = load_workbook(output)
                 try:
@@ -276,10 +276,10 @@ class ReportRowLimitTests(unittest.TestCase):
                 summary_rows = workbook["Summary"].max_row
             finally:
                 workbook.close()
-            with patch("dbc_compare_tool.report.excel.EXCEL_MAX_ROWS", summary_rows):
+            with patch("can_toolbox.dbc_compare.report.excel.EXCEL_MAX_ROWS", summary_rows):
                 write_excel_report(result, output)
             original = output.read_bytes()
-            with patch("dbc_compare_tool.report.excel.EXCEL_MAX_ROWS", summary_rows - 1):
+            with patch("can_toolbox.dbc_compare.report.excel.EXCEL_MAX_ROWS", summary_rows - 1):
                 with self.assertRaisesRegex(ReportExportError, "row limit"):
                     write_excel_report(result, output)
             self.assertEqual(output.read_bytes(), original)

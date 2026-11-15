@@ -22,8 +22,8 @@ except ImportError:
     HAS_QT = False
 else:
     HAS_QT = True
-    from dbc_compare_tool.ui.ecu_focus import EcuFocusDialog
-    from dbc_compare_tool.ui.main_window import (
+    from can_toolbox.ui.ecu_focus import EcuFocusDialog
+    from can_toolbox.ui.main_window import (
         CompareWorker,
         EcuDiscoveryWorker,
         EcuPairingDialog,
@@ -33,7 +33,7 @@ else:
     )
 
 
-_UI = "dbc_compare_tool.ui.main_window"
+_UI = "can_toolbox.ui.main_window"
 _DBC = '''VERSION ""
 BU_: {sender} Receiver Spare
 BO_ 100 Status: 8 {sender}
@@ -335,7 +335,7 @@ class GuiInputTests(unittest.TestCase):
         from contextlib import redirect_stderr, redirect_stdout
         from io import StringIO
 
-        from dbc_compare_tool.cli import main
+        from can_toolbox.cli import main
 
         self._files()
         self._save_maps()
@@ -780,9 +780,9 @@ class GuiInputTests(unittest.TestCase):
     def test_same_corpus_matches_api_cli_and_gui_metadata_after_excel_roundtrip(self):
         import contextlib
         import io
-        from dbc_compare_tool.cli import main as cli_main
-        from dbc_compare_tool.core.comparator import DbcComparator
-        from dbc_compare_tool.report.excel import write_excel_report
+        from can_toolbox.cli import main as cli_main
+        from can_toolbox.dbc_compare.core.comparator import DbcComparator
+        from can_toolbox.dbc_compare.report.excel import write_excel_report
         from tests.test_signal_pairing import shifted_dbc
 
         old_text, new_text, _ = shifted_dbc(False)

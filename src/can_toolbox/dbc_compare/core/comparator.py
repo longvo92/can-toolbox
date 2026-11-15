@@ -4,19 +4,19 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path, PureWindowsPath
 
-from dbc_compare_tool.core.discovery import collect_dbc_files
-from dbc_compare_tool.core.ecu import (
+from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
+from can_toolbox.dbc_compare.core.ecu import (
     database_ecu_nodes,
     receivers_match,
     transmitters_match,
     validate_dbc_input,
     validate_ecu_map,
 )
-from dbc_compare_tool.core.focus import restrict_focus_overview
-from dbc_compare_tool.core.models import Change, ComparisonResult, DbcDatabase, Diagnostic, EntityIdentity, FilePairSummary, Message, Signal
-from dbc_compare_tool.core.pairing import DatabaseCandidate, match_renamed_databases
-from dbc_compare_tool.core.parser import DbcParseError, parse_dbc, validate_database
-from dbc_compare_tool.core.rename import EventMessageDetector, MessageRenameDetector, SignalRenameDetector
+from can_toolbox.dbc_compare.core.focus import restrict_focus_overview
+from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, DbcDatabase, Diagnostic, EntityIdentity, FilePairSummary, Message, Signal
+from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
+from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc, validate_database
+from can_toolbox.dbc_compare.core.rename import EventMessageDetector, MessageRenameDetector, SignalRenameDetector
 
 LAYOUT_PROPERTIES = ("Start Bit", "Length", "Byte Order")
 PROPERTY_ORDER = (

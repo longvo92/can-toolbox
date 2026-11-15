@@ -7,8 +7,8 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 GOOD = 'VERSION ""\nBU_: ECU\nBO_ 100 Status: 8 ECU\n SG_ Value : 0|8@1+ (1,0) [0|255] "" ECU\n'
 

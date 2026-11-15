@@ -115,7 +115,7 @@ class RealRepositoryTests(unittest.TestCase):
     """
 
     def setUp(self):
-        init_text = (_REPO_ROOT / "src" / "dbc_compare_tool" / "__init__.py").read_text(encoding="utf-8")
+        init_text = (_REPO_ROOT / "src" / "can_toolbox" / "__init__.py").read_text(encoding="utf-8")
         self.version = release_check.read_init_version(init_text)
         self.changelog_text = (_REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 

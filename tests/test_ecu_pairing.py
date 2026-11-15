@@ -8,13 +8,13 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.ecu import collect_ecu_nodes, validate_ecu_map
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
-from dbc_compare_tool.core.pairing import DatabaseCandidate, match_renamed_databases
-from dbc_compare_tool.core.parser import parse_dbc
-from dbc_compare_tool.core.rename import MessageRenameDetector, SignalRenameDetector
+from can_toolbox.cli import main
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.ecu import collect_ecu_nodes, validate_ecu_map
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
+from can_toolbox.dbc_compare.core.parser import parse_dbc
+from can_toolbox.dbc_compare.core.rename import MessageRenameDetector, SignalRenameDetector
 
 
 def _database(tx: str, rx: tuple[str, ...], *, factor: float = 1.0) -> DbcDatabase:

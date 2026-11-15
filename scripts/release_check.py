@@ -9,7 +9,7 @@ version and writing the release notes stays a reviewed pull request.
 
 Verified:
   * the version is a plain X.Y.Z
-  * src/dbc_compare_tool/__init__.py and pyproject.toml agree with it
+  * src/can_toolbox/__init__.py and pyproject.toml agree with it
   * CHANGELOG.md documents it as the newest released version, with a non-empty
     body, and nothing is left sitting under [Unreleased]
 
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-INIT_FILE = REPO_ROOT / "src" / "dbc_compare_tool" / "__init__.py"
+INIT_FILE = REPO_ROOT / "src" / "can_toolbox" / "__init__.py"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 
@@ -44,7 +44,7 @@ class ReleaseCheckError(Exception):
 def read_init_version(text: str) -> str:
     match = _INIT_VERSION.search(text)
     if not match:
-        raise ReleaseCheckError("__version__ not found in src/dbc_compare_tool/__init__.py")
+        raise ReleaseCheckError("__version__ not found in src/can_toolbox/__init__.py")
     return match.group(1)
 
 

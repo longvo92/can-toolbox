@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.cli import main
+from can_toolbox.cli import main
 
 
 _ROOT = Path(__file__).resolve().parents[1]

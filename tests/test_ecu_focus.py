@@ -9,11 +9,11 @@ import unittest
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.focus import apply_ecu_focus
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.cli import main
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 def signal(name, start, *receivers):

@@ -6,7 +6,7 @@ from typing import Any
 import cantools.database
 from cantools.database.errors import UnsupportedDatabaseFormatError
 
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 
 
 EXTENDED_FRAME_FLAG = 0x80000000

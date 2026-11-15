@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dbc_compare_tool.core.reasons import MatchReason
+from can_toolbox.dbc_compare.core.reasons import MatchReason
 
 LANGUAGES = ("en", "vi")
 
@@ -21,7 +21,7 @@ VI = {
     "DBC Overview": "Tổng quan DBC",
     "Message Details": "Chi tiết message",
     "Signal Details": "Chi tiết signal",
-    "DBC Compare Tool  —  Comparison Report": "DBC Compare Tool  —  Report so sánh",
+    "CAN Toolbox  —  DBC Comparison Report": "CAN Toolbox  —  Report so sánh DBC",
     "Metric": "Chỉ số",
     "Count": "Số lượng",
     "Messages Added": "Message thêm mới",
@@ -239,5 +239,5 @@ VI = {
     "Unable to open help file: {error}": "Không mở được file trợ giúp: {error}",
     "Unable to open the release notes: {error}": "Không mở được ghi chú phát hành: {error}",
     "No release notes available.": "Chưa có ghi chú phát hành.",
-    "DBC Compare Tool": "DBC Compare Tool",
+    "CAN Toolbox": "CAN Toolbox",
 }

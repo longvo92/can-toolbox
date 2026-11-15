@@ -2,7 +2,7 @@ name: Release
 
 # Cutting a release is two moves, on purpose.
 #
-#   1. A normal PR bumps the version in src/dbc_compare_tool/__init__.py and
+#   1. A normal PR bumps the version in src/can_toolbox/__init__.py and
 #      pyproject.toml, and adds the "## [X.Y.Z] - <date>" section at the top of
 #      CHANGELOG.md, moving anything under [Unreleased] into it. A human merges it.
 #   2. This workflow is triggered against main:
@@ -88,7 +88,7 @@ jobs:
         run: python -m unittest discover -s tests
 
       - name: Compare the bundled example baselines (CLI smoke test)
-        run: python -m dbc_compare_tool.cli --old examples/old --new examples/new --out report.xlsx
+        run: python -m can_toolbox.cli --old examples/old --new examples/new --out report.xlsx
 
       - name: Build the exe and the zipapp
         run: python scripts/build.py
@@ -117,8 +117,8 @@ jobs:
             Write-Output "$name started and was still running after 25s"
           }
 
-          Start-AndCheck "exe" "dist/DbcCompareTool-$version.exe" $null
-          Start-AndCheck "zipapp" "python" @("dist/DbcCompareTool-$version.pyzw")
+          Start-AndCheck "exe" "dist/CanToolbox-$version.exe" $null
+          Start-AndCheck "zipapp" "python" @("dist/CanToolbox-$version.pyzw")
 
       # The zipapp is not standalone: _resource_path() resolves next to the
       # .pyzw, so resources/ has to travel with it.
@@ -126,17 +126,17 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
-          $parts = @("dist/DbcCompareTool-$version.pyzw", "dist/resources")
-          Compress-Archive -Path $parts -DestinationPath "dist/DbcCompareTool-$version-zipapp.zip"
+          $parts = @("dist/CanToolbox-$version.pyzw", "dist/resources")
+          Compress-Archive -Path $parts -DestinationPath "dist/CanToolbox-$version-zipapp.zip"
 
       # uploaded on a rehearsal too: the point of a rehearsal is being able to
       # look at what would have shipped
       - uses: actions/upload-artifact@v4
         with:
-          name: DbcCompareTool-${{ inputs.version }}
+          name: CanToolbox-${{ inputs.version }}
           path: |
-            dist/DbcCompareTool-${{ inputs.version }}.exe
-            dist/DbcCompareTool-${{ inputs.version }}-zipapp.zip
+            dist/CanToolbox-${{ inputs.version }}.exe
+            dist/CanToolbox-${{ inputs.version }}-zipapp.zip
             RELEASE_NOTES.md
 
       - name: Publish
@@ -149,8 +149,8 @@ jobs:
             --target "${{ github.sha }}" \
             --title "v${{ inputs.version }}" \
             --notes-file RELEASE_NOTES.md \
-            "dist/DbcCompareTool-${{ inputs.version }}.exe" \
-            "dist/DbcCompareTool-${{ inputs.version }}-zipapp.zip"
+            "dist/CanToolbox-${{ inputs.version }}.exe" \
+            "dist/CanToolbox-${{ inputs.version }}-zipapp.zip"
 
       - name: Rehearsal only
         if: ${{ !inputs.publish }}

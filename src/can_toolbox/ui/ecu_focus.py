@@ -8,8 +8,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QPushButton, QVBoxLayout,
 )
 
-from dbc_compare_tool.i18n import translate
-from dbc_compare_tool.ui.widgets import dialog_buttons
+from can_toolbox.i18n import translate
+from can_toolbox.ui.widgets import dialog_buttons
 
 
 class EcuFocusDialog(QDialog):

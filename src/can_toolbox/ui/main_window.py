@@ -35,17 +35,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from dbc_compare_tool import __version__
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.core.discovery import collect_dbc_files
-from dbc_compare_tool.core.ecu import scan_ecu_inputs, validate_ecu_map
-from dbc_compare_tool.core.focus import apply_ecu_focus
-from dbc_compare_tool.core.models import ComparisonResult, Diagnostic
-from dbc_compare_tool.i18n import LANGUAGES, translate
-from dbc_compare_tool.release_notes import published_release_notes
-from dbc_compare_tool.report.excel import default_report_path, write_excel_report
-from dbc_compare_tool.ui.ecu_focus import EcuFocusDialog
-from dbc_compare_tool.ui.widgets import DropLineEdit, NoWheelComboBox, dialog_buttons
+from can_toolbox import __version__
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
+from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs, validate_ecu_map
+from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
+from can_toolbox.dbc_compare.core.models import ComparisonResult, Diagnostic
+from can_toolbox.i18n import LANGUAGES, translate
+from can_toolbox.release_notes import published_release_notes
+from can_toolbox.dbc_compare.report.excel import default_report_path, write_excel_report
+from can_toolbox.ui.ecu_focus import EcuFocusDialog
+from can_toolbox.ui.widgets import DropLineEdit, NoWheelComboBox, dialog_buttons
 
 
 def _resource_path(filename: str) -> Path:
@@ -543,7 +543,7 @@ class ManualPairingDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("DBC Compare Tool")
+        self.setWindowTitle("CAN Toolbox")
         self.resize(1000, 780)
         self.setMinimumSize(720, 520)
         self.worker: CompareWorker | None = None
@@ -551,7 +551,7 @@ class MainWindow(QMainWindow):
         self.ecu_worker: EcuDiscoveryWorker | None = None
         self._pending_output_path: Path | None = None
         self.last_report: Path | None = None
-        self._settings = QSettings("DbcCompareTool", "DBCCompareTool")
+        self._settings = QSettings("CanToolbox", "CANToolbox")
         self._gui_language = self._language_preference("gui_language", LANGUAGES, "en")
         self._report_language = self._language_preference("report_language", ("gui", *LANGUAGES), "gui")
         self._pending_report_language = "en"
@@ -723,7 +723,7 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         # Header
-        title = self._text_widget(QLabel, "DBC Compare Tool")
+        title = self._text_widget(QLabel, "CAN Toolbox")
         title.setObjectName("appTitle")
 
         version_label = QLabel(f"v{__version__}")

@@ -1,4 +1,4 @@
-from dbc_compare_tool.ui.main_window import main
+from can_toolbox.ui.main_window import main
 
 
 if __name__ == "__main__":

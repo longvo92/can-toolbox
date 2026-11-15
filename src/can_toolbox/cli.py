@@ -4,11 +4,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.core.ecu import scan_ecu_inputs
-from dbc_compare_tool.core.focus import apply_ecu_focus
-from dbc_compare_tool.core.parser import DbcParseError
-from dbc_compare_tool.report.excel import ReportExportError, default_report_path, write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs
+from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
+from can_toolbox.dbc_compare.core.parser import DbcParseError
+from can_toolbox.dbc_compare.report.excel import ReportExportError, default_report_path, write_excel_report
 
 
 def _path_from_parts(parts: list[str]) -> Path:

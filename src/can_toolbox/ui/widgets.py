@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QComboBox, QDialogButtonBox, QLineEdit
 
-from dbc_compare_tool.i18n import translate
+from can_toolbox.i18n import translate
 
 
 def dialog_buttons(language: str, *buttons: QDialogButtonBox.StandardButton) -> QDialogButtonBox:

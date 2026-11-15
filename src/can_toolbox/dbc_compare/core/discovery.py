@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dbc_compare_tool.core.models import FilePair
+from can_toolbox.dbc_compare.core.models import FilePair
 
 
 def discover_dbc_pairs(old_folder: Path, new_folder: Path) -> list[FilePair]:

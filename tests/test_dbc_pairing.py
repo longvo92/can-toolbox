@@ -9,10 +9,10 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.core.models import DbcDatabase, Message
-from dbc_compare_tool.core.pairing import DatabaseCandidate, _maximum_assignment, match_renamed_databases
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message
+from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, _maximum_assignment, match_renamed_databases
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 def _candidate(path: str, frame: int | None = None, name: str = "Status") -> DatabaseCandidate:
