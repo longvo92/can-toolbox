@@ -23,6 +23,7 @@ from can_toolbox import __version__
 from can_toolbox.app_paths import changelog_path, resource_path
 from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
+from can_toolbox.ui.blf_tab import BlfTab
 from can_toolbox.ui.compare_tab import CompareTab
 from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons
 
@@ -50,7 +51,10 @@ class MainWindow(QMainWindow):
         self.compare_tab = CompareTab(
             self._settings, gui_language=self._gui_language, report_language=self._report_language,
         )
-        self.tool_tabs: tuple[QWidget, ...] = (self.compare_tab,)
+        self.blf_tab = BlfTab(
+            self._settings, gui_language=self._gui_language, report_language=self._report_language,
+        )
+        self.tool_tabs: tuple[QWidget, ...] = (self.compare_tab, self.blf_tab)
 
         self._build_menu()
         self._build_layout()

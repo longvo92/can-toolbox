@@ -102,25 +102,49 @@ class NoWheelComboBox(QComboBox):
 
 
 class DropLineEdit(QLineEdit):
-    """QLineEdit that accepts the currently selected baseline input type."""
+    """Path field that accepts dropped files and folders of the configured kinds."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setAcceptDrops(True)
+        self._directories = True
+        self._suffixes: tuple[str, ...] = ()
+        self._placeholder_key = ""
         self.set_files_mode(False)
         # Without this the field demands room for the placeholder, which pushes
         # a horizontal scrollbar onto every layout it sits in.
         self.setMinimumWidth(160)
 
+    def set_accepts(
+        self,
+        *,
+        directories: bool = False,
+        suffixes: tuple[str, ...] = (),
+        placeholder_key: str = "",
+        language: str = "en",
+    ) -> None:
+        """Accept folders and/or files with ``suffixes`` (lowercase, with dot)."""
+        self._directories = directories
+        self._suffixes = tuple(suffix.lower() for suffix in suffixes)
+        self._placeholder_key = placeholder_key
+        self.set_language(language)
+
+    def set_language(self, language: str) -> None:
+        self.setPlaceholderText(translate(language, self._placeholder_key) if self._placeholder_key else "")
+
     def set_files_mode(self, enabled: bool, language: str = "en") -> None:
-        self._files_mode = enabled
-        key = "Browse or drag & drop a DBC file here" if enabled else "Browse or drag & drop a folder here"
-        self.setPlaceholderText(translate(language, key))
+        """DBC baseline input: one ``.dbc`` file, or a baseline folder."""
+        if enabled:
+            self.set_accepts(suffixes=(".dbc",), placeholder_key="Browse or drag & drop a DBC file here",
+                             language=language)
+        else:
+            self.set_accepts(directories=True, placeholder_key="Browse or drag & drop a folder here",
+                             language=language)
 
     def _accepts_path(self, path: Path) -> bool:
-        if self._files_mode:
-            return path.is_file() and path.suffix.lower() == ".dbc"
-        return path.is_dir()
+        if path.is_dir():
+            return self._directories
+        return path.is_file() and path.suffix.lower() in self._suffixes
 
     def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasUrls():
