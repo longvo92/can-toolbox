@@ -38,7 +38,7 @@ Issues = "https://github.com/longvo92/can-toolbox/issues"
 Changelog = "https://github.com/longvo92/can-toolbox/blob/main/CHANGELOG.md"
 
 [project.gui-scripts]
-can-toolbox = "can_toolbox.ui.main_window:main"
+can-toolbox = "can_toolbox.ui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -234,8 +234,9 @@ VI = {
     "Report Not Found": "Không tìm thấy report",
     "The report file no longer exists. Run the comparison again.":
         "File report không còn tồn tại. Hãy chạy lại so sánh.",
-    "Comparison Running": "Đang so sánh",
-    "A comparison is still running. Quit anyway?": "Tool vẫn đang so sánh. Bạn có muốn thoát không?",
+    "Task Running": "Đang chạy",
+    "A task is still running. Quit anyway?": "Một tác vụ vẫn đang chạy. Bạn có muốn thoát không?",
+    "DBC Compare": "So sánh DBC",
     "Unable to open help file: {error}": "Không mở được file trợ giúp: {error}",
     "Unable to open the release notes: {error}": "Không mở được ghi chú phát hành: {error}",
     "No release notes available.": "Chưa có ghi chú phát hành.",

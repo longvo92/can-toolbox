@@ -1,4 +1,4 @@
-from can_toolbox.ui.main_window import main
+from can_toolbox.ui.app import main
 
 
 if __name__ == "__main__":

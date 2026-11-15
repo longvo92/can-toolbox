@@ -89,7 +89,7 @@ def build_pyz(version: str) -> Path:
         zipapp.create_archive(
             staging,
             target,
-            main="can_toolbox.ui.main_window:main",
+            main="can_toolbox.ui.app:main",
             compressed=True,
         )
     # _resource_path() resolves to the folder containing the .pyzw,

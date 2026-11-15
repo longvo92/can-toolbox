@@ -1,10 +1,81 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtWidgets import QComboBox, QDialogButtonBox, QLineEdit
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialogButtonBox,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from can_toolbox.i18n import translate
+
+
+class TextBinder:
+    """Remember which widget text comes from which translation key.
+
+    Each binding is applied immediately and replayed by :meth:`set_language`,
+    so a whole tab can be retranslated without being rebuilt.
+    """
+
+    def __init__(self, language: str = "en") -> None:
+        self.language = language
+        self._bindings: list[tuple[Callable[[str], object], str]] = []
+
+    def tr(self, key: str, **parameters: object) -> str:
+        return translate(self.language, key, **parameters)
+
+    def bind(self, setter: Callable[[str], object], key: str) -> None:
+        self._bindings.append((setter, key))
+        setter(self.tr(key))
+
+    def widget(self, widget_type, key: str):
+        widget = widget_type()
+        self.bind(widget.setText, key)
+        return widget
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        for setter, key in self._bindings:
+            setter(self.tr(key))
+
+
+def section(binder: TextBinder, key: str) -> tuple[QGroupBox, QGridLayout]:
+    """Return a titled card and the grid that holds its rows."""
+    card = QGroupBox()
+    card.setObjectName("sectionCard")
+    binder.bind(card.setAccessibleName, key)
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(14, 12, 14, 14)
+    layout.setSpacing(12)
+    title = binder.widget(QLabel, key)
+    title.setObjectName("sectionTitle")
+    layout.addWidget(title)
+    form = QGridLayout()
+    form.setHorizontalSpacing(8)
+    form.setVerticalSpacing(8)
+    form.setColumnStretch(1, 1)
+    layout.addLayout(form)
+    return card, form
+
+
+def scrollable(content: QWidget) -> QScrollArea:
+    """Keep the workspace scrollable and give its backing surfaces the app background."""
+    scroll = QScrollArea()
+    scroll.setObjectName("workspaceScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll.viewport().setObjectName("workspaceViewport")
+    content.setObjectName("workspaceContent")
+    scroll.setWidget(content)
+    return scroll
 
 
 def dialog_buttons(language: str, *buttons: QDialogButtonBox.StandardButton) -> QDialogButtonBox:
