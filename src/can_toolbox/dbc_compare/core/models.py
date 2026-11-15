@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 
-
 def jaccard(left: set[tuple[Any, ...]], right: set[tuple[Any, ...]]) -> float:
     """Jaccard similarity of two sets. Two empty sets count as identical."""
     if not left and not right:

@@ -8,8 +8,8 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.pipeline import run_comparison
 
 
 def shifted_dbc(event_like: bool) -> tuple[str, str, dict[str, str]]:

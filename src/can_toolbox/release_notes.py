@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 
-
 _RELEASE_HEADING = re.compile(
     r"^##[ \t]+\[\d+\.\d+\.\d+\][ \t]*[-—][ \t]*\d{4}-\d{2}-\d{2}[ \t]*\r?$",
     re.MULTILINE,

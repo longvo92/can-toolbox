@@ -10,7 +10,6 @@ from can_toolbox.dbc_compare.core.models import Message, Signal, jaccard
 from can_toolbox.dbc_compare.core.pairing import _maximum_assignment
 from can_toolbox.dbc_compare.core.reasons import MatchReason
 
-
 T = TypeVar("T")
 
 

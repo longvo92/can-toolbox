@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from itertools import chain
 from dataclasses import replace
+from itertools import chain
 
 from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, Message, Signal
 

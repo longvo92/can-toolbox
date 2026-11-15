@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from openpyxl import load_workbook
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -32,6 +33,8 @@ else:
     from can_toolbox.ui.main_window import MainWindow
     from can_toolbox.ui.style import configure_appearance
 
+
+pytestmark = pytest.mark.gui
 
 _SHELL = "can_toolbox.ui.main_window"
 _UI = "can_toolbox.ui.compare_tab"

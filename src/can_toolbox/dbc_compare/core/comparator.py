@@ -13,7 +13,16 @@ from can_toolbox.dbc_compare.core.ecu import (
     validate_ecu_map,
 )
 from can_toolbox.dbc_compare.core.focus import restrict_focus_overview
-from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, DbcDatabase, Diagnostic, EntityIdentity, FilePairSummary, Message, Signal
+from can_toolbox.dbc_compare.core.models import (
+    Change,
+    ComparisonResult,
+    DbcDatabase,
+    Diagnostic,
+    EntityIdentity,
+    FilePairSummary,
+    Message,
+    Signal,
+)
 from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
 from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc, validate_database
 from can_toolbox.dbc_compare.core.rename import EventMessageDetector, MessageRenameDetector, SignalRenameDetector

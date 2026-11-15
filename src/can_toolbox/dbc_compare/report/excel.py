@@ -13,9 +13,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, FilePairSummary, Message
-from can_toolbox.i18n import LANGUAGES, reason_text, translate
 from can_toolbox.dbc_compare.report._style import BORDER, HEADER_BG, HEADER_FG
-
+from can_toolbox.i18n import LANGUAGES, reason_text, translate
 
 SUMMARY_ORDER = [
     "Messages Added",

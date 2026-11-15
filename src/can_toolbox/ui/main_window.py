@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,

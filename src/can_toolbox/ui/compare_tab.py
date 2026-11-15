@@ -6,7 +6,7 @@ import os
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QThread, Signal
+from PySide6.QtCore import QSettings, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,

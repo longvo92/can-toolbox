@@ -6,13 +6,13 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
 from can_toolbox.dbc_compare.core.ecu import collect_ecu_nodes, validate_ecu_map
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
 from can_toolbox.dbc_compare.core.parser import parse_dbc
 from can_toolbox.dbc_compare.core.rename import MessageRenameDetector, SignalRenameDetector
+from can_toolbox.dbc_compare.pipeline import run_comparison
 
 
 def _database(tx: str, rx: tuple[str, ...], *, factor: float = 1.0) -> DbcDatabase:

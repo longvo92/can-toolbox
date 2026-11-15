@@ -25,9 +25,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "cantools>=40.3.0" "openpyxl>=3.1.0"
-          python -m pip install -e . --no-deps
+          python -m pip install -e . --no-deps "pytest>=8,<10"
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python -m pytest -q -m "not gui"
       - name: Run the engine smoke test
         run: python scripts/smoke.py
 
@@ -39,8 +39,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install GUI dependencies
-        run: python -m pip install -e ".[gui]"
+        run: python -m pip install -e ".[gui]" "pytest>=8,<10"
       - name: Exercise GUI input and ECU pairing
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest tests.test_ui_inputs -v
+        run: python -m pytest -q -m gui

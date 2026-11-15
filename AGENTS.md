@@ -11,7 +11,7 @@ Compare CAN DBC files or baseline folders and generate an engineering-grade Exce
 
 ## Commands
 - Environment: `PYTHONPATH=src` (tests must import the working tree, not an installed copy).
-- Test: `python -m unittest discover -s tests -v`. Lint: `python -m ruff check .`
+- Test: `python -m pytest -q` (`-m gui` / `-m "not gui"` split the Qt tests). Lint: `python -m ruff check .`
 - Smoke: `python scripts/smoke.py` (headless engine stages; `--gui` also opens the window offscreen)
 - Build: `python scripts/build.py`. Release gate: `python scripts/release_check.py <X.Y.Z> --notes <file>`.
 

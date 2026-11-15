@@ -31,6 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.7.0"]
+dev = ["pytest>=8,<10", "ruff>=0.15,<0.18", "pyinstaller>=6.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/longvo92/can-toolbox"
@@ -42,3 +43,14 @@ can-toolbox = "can_toolbox.ui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = ["gui: drives Qt widgets (needs PySide6 and a Qt platform plugin)"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

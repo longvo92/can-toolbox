@@ -8,15 +8,13 @@ ship.
 
 import tempfile
 import unittest
+from functools import partial
 from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from functools import partial
-
-from can_toolbox.i18n import reason_text, translate
 from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
 from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, FilePairSummary
 from can_toolbox.dbc_compare.report.excel import (
@@ -25,6 +23,7 @@ from can_toolbox.dbc_compare.report.excel import (
     default_report_path,
     write_excel_report,
 )
+from can_toolbox.i18n import reason_text, translate
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 _OLD_FOLDER = _EXAMPLES / "old"

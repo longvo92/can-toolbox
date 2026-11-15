@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import unittest
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 from openpyxl import load_workbook
 
-from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs
-from can_toolbox.dbc_compare.pipeline import compare_inputs, run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs
 from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.pipeline import compare_inputs, run_comparison
 from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 

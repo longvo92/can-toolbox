@@ -9,9 +9,9 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
