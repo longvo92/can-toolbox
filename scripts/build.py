@@ -58,7 +58,7 @@ def check_build_env(python: str) -> None:
             f"{probe.stderr.strip()}\n"
             "Fix: create the project venv and install deps:\n"
             "    python -m venv .venv\n"
-            '    .venv\\Scripts\\pip install -e ".[gui]" pyinstaller',
+            '    .venv\\Scripts\\pip install -e ".[dev]"',
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -169,7 +169,7 @@ def main() -> int:
         print(f"Built: {path.relative_to(REPO_ROOT)} ({size_mb:.1f} MB)")
     if any(p.suffix == ".pyzw" for p in built):
         print("Note: ship dist/resources/ alongside the .pyzw; target machine needs")
-        print("      Python >=3.9 with: pip install PySide6 cantools openpyxl")
+        print("      Python >=3.11 with: pip install -r requirements.txt")
     return 0
 
 
