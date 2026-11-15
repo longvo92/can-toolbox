@@ -36,11 +36,10 @@ from PySide6.QtWidgets import (
 )
 
 from can_toolbox import __version__
-from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
 from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs, validate_ecu_map
-from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
 from can_toolbox.dbc_compare.core.models import ComparisonResult, Diagnostic
+from can_toolbox.dbc_compare.pipeline import compare_inputs
 from can_toolbox.i18n import LANGUAGES, translate
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.dbc_compare.report.excel import default_report_path, write_excel_report
@@ -294,24 +293,15 @@ class CompareWorker(QThread):
     def run(self) -> None:
         try:
             self.log.emit("Discovering and parsing DBC files...")
-            comparator = DbcComparator(
-                include_unchanged=self.include_unchanged, ecu_map=self.ecu_map
+            result = compare_inputs(
+                self.old_folder,
+                self.new_folder,
+                include_unchanged=self.include_unchanged,
+                ecu_map=self.ecu_map,
+                focus_nodes=self.focus_nodes,
+                pair_map=self.pair_map,
+                progress=self.log.emit,
             )
-            if self.pair_map is None:
-                result = comparator.compare_paths(
-                    self.old_folder,
-                    self.new_folder,
-                    progress_callback=lambda msg: self.log.emit(msg),
-                )
-            else:
-                result = comparator.compare_manual(
-                    self.old_folder,
-                    self.new_folder,
-                    self.pair_map,
-                    progress_callback=lambda msg: self.log.emit(msg),
-                )
-            if self.focus_nodes:
-                result = apply_ecu_focus(result, self.focus_nodes)
             self.compared.emit(result)
         except Exception as exc:
             self.failed.emit(str(exc))

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import contextlib
-import io
 import tempfile
 import unittest
 from pathlib import Path
 
 from openpyxl import load_workbook
 
-from can_toolbox.cli import main
+from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.report.excel import write_excel_report
 
@@ -71,11 +69,9 @@ class TestBulkRename(unittest.TestCase):
                 self.assertIn("nested", result.file_pairs[0].old_path)
                 self.assertIn("other", result.file_pairs[0].new_path)
 
-    def test_cli_report_has_renames_and_filename_only_labels(self):
-        report = self.root / "report.xlsx"
-        with contextlib.redirect_stdout(io.StringIO()):
-            status = main(["--old", str(self.old), "--new", str(self.new), "--out", str(report)])
-        self.assertEqual(status, 0)
+    def test_pipeline_report_has_renames_and_filename_only_labels(self):
+        result, report = run_comparison(self.old, self.new, self.root / "report.xlsx")
+        self.assertEqual(result.completeness, "Complete")
         workbook = load_workbook(report)
         self.addCleanup(workbook.close)
         self.assertEqual(workbook.sheetnames, ["Summary", "Message Details", "Signal Details"])

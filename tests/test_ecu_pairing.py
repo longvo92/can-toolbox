@@ -1,14 +1,12 @@
 """ECU rename equivalence, validation and preserved original report context."""
 from __future__ import annotations
 
-import contextlib
-import io
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from can_toolbox.cli import main
+from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
 from can_toolbox.dbc_compare.core.ecu import collect_ecu_nodes, validate_ecu_map
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
@@ -205,7 +203,7 @@ class TestEcuDiscoveryAndFolderMappings(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "OLD: MISSING"):
             DbcComparator(ecu_map={"MISSING": "C"}).compare_paths(self.root / "old", self.root / "new")
 
-    def test_partial_mapping_in_files_folders_manual_and_cli(self):
+    def test_partial_mapping_in_files_folders_manual_and_pipeline(self):
         for mapping in ({"A": "B"}, {"A": "B", "C": "D"}):
             with self.subTest(mapping=mapping):
                 for index, node in enumerate(("A", "B", "C", "D", "E")):
@@ -222,15 +220,11 @@ class TestEcuDiscoveryAndFolderMappings(unittest.TestCase):
                 self.assertTrue(all(result.summary()["Total Changes"] == 0 for result in results))
                 for mode in ("files", "folders"):
                     suffix = "0.dbc" if mode == "files" else ""
-                    output = self.root / f"{mode}.xlsx"
-                    args = ["--old", str(self.root / "old" / suffix), "--new", str(self.root / "new" / suffix),
-                            "--out", str(output)]
-                    for old, new in mapping.items():
-                        args.extend(("--ecu-pair", f"{old}={new}"))
-                    log = io.StringIO()
-                    with contextlib.redirect_stdout(log):
-                        self.assertEqual(main(args), 0)
-                    self.assertIn("Total changes: 0", log.getvalue())
+                    result, output = run_comparison(
+                        self.root / "old" / suffix, self.root / "new" / suffix,
+                        self.root / f"{mode}.xlsx", ecu_map=mapping,
+                    )
+                    self.assertEqual(result.summary()["Total Changes"], 0)
                     self.assertTrue(output.is_file())
 
 

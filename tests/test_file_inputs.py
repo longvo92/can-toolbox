@@ -1,17 +1,15 @@
-"""Direct DBC file comparisons and shared CLI input validation."""
+"""Direct DBC file comparisons and shared pipeline input validation."""
 from __future__ import annotations
 
-import contextlib
-import io
 import tempfile
 import unittest
 from pathlib import Path
 
 from openpyxl import load_workbook
 
-from can_toolbox.cli import main
 from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.parser import DbcParseError
+from can_toolbox.dbc_compare.pipeline import run_comparison
 
 
 class TestFileInputs(unittest.TestCase):
@@ -24,11 +22,8 @@ class TestFileInputs(unittest.TestCase):
         self.old.write_text('VERSION ""\n\nBO_ 100 Status: 8 OLD\n SG_ Speed : 0|8@1+ (1,0) [0|255] "" OLD\n', encoding="utf-8")
         self.new.write_text(self.old.read_text(encoding="utf-8").replace("OLD", "NEW"), encoding="utf-8")
 
-    def _cli(self, *extra: str, old: Path | None = None, new: Path | None = None):
-        stdout, stderr = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            status = main(["--old", str(old or self.old), "--new", str(new or self.new), *extra])
-        return status, stdout.getvalue(), stderr.getvalue()
+    def _run(self, output: Path | None = None, *, new: Path | None = None, **options):
+        return run_comparison(self.old, new or self.new, output, **options)
 
     def test_explicit_files_pair_even_with_unrelated_content(self):
         self.new.write_text('VERSION ""\n\nBO_ 900 Other: 3 ECU\n', encoding="utf-8")
@@ -65,26 +60,24 @@ class TestFileInputs(unittest.TestCase):
         self.new.write_text("not a DBC", encoding="utf-8")
         with self.assertRaises(DbcParseError):
             DbcComparator().compare_files(self.old, self.new)
-        status, _, error = self._cli()
-        self.assertEqual(status, 1)
-        self.assertIn("Unable to parse DBC", error)
-
-    def test_duplicate_message_name_is_a_cli_parse_error_without_report(self):
-        old = self.old.read_text(encoding="utf-8")
-        self.old.write_text(old + old.replace("BO_ 100 ", "BO_ 200 "), encoding="utf-8")
-        status, _, error = self._cli()
-        self.assertEqual(status, 1)
-        self.assertIn("Duplicate message name 'Status'", error)
+        with self.assertRaisesRegex(DbcParseError, "Unable to parse DBC"):
+            self._run()
         self.assertFalse(list(self.root.glob("*.xlsx")))
 
-    def test_cli_exports_same_name_id_change_and_precise_factor_delta(self):
+    def test_duplicate_message_name_is_a_parse_error_without_report(self):
+        old = self.old.read_text(encoding="utf-8")
+        self.old.write_text(old + old.replace("BO_ 100 ", "BO_ 200 "), encoding="utf-8")
+        with self.assertRaisesRegex(DbcParseError, "Duplicate message name 'Status'"):
+            self._run()
+        self.assertFalse(list(self.root.glob("*.xlsx")))
+
+    def test_pipeline_exports_same_name_id_change_and_precise_factor_delta(self):
         old = self.old.read_text(encoding="utf-8").replace("(1,0)", "(0.1234567,0)")
         self.old.write_text(old, encoding="utf-8")
         self.new.write_text(old.replace("BO_ 100 ", "BO_ 400 ").replace("0.1234567", "0.1234568"),
                             encoding="utf-8")
-        report = self.root / "precise.xlsx"
-        status, _, error = self._cli("--out", str(report))
-        self.assertEqual((status, error), (0, ""))
+        result, report = self._run(self.root / "precise.xlsx")
+        self.assertEqual(result.completeness, "Complete")
         workbook = load_workbook(report)
         self.addCleanup(workbook.close)
         for name, expected in (("Message Details", "CAN ID: 100->400"),
@@ -95,11 +88,10 @@ class TestFileInputs(unittest.TestCase):
             self.assertEqual(row["Change Type"], "Modified")
             self.assertEqual(row["Changed Properties"], expected)
 
-    def test_cli_files_mapping_and_default_report_name(self):
-        status, output, error = self._cli("--ecu-pair", "OLD=NEW", "--include-unchanged")
-        self.assertEqual((status, error), (0, ""))
-        self.assertIn("Total changes: 0", output)
-        report = self.root / "compared_alpha input_vs_omega input.xlsx"
+    def test_files_mapping_and_default_report_name(self):
+        result, report = self._run(ecu_map={"OLD": "NEW"}, include_unchanged=True)
+        self.assertEqual(result.summary()["Total Changes"], 0)
+        self.assertEqual(report, self.root / "compared_alpha input_vs_omega input.xlsx")
         self.assertTrue(report.is_file())
         workbook = load_workbook(report)
         self.addCleanup(workbook.close)
@@ -107,34 +99,29 @@ class TestFileInputs(unittest.TestCase):
         for name in ("Message Details", "Signal Details"):
             self.assertIn("Changed Properties", next(workbook[name].values))
 
-    def test_cli_repeatable_mapping(self):
+    def test_multiple_ecu_pairs(self):
         self.old.write_text(self.old.read_text(encoding="utf-8").replace('"" OLD', '"" OLD_RX'), encoding="utf-8")
         self.new.write_text(self.new.read_text(encoding="utf-8").replace('"" NEW', '"" NEW_RX'), encoding="utf-8")
-        status, output, error = self._cli("--ecu-pair", "OLD=NEW", "--ecu-pair", "OLD_RX=NEW_RX")
-        self.assertEqual((status, error), (0, ""))
-        self.assertIn("Total changes: 0", output)
+        result, _ = self._run(ecu_map={"OLD": "NEW", "OLD_RX": "NEW_RX"})
+        self.assertEqual(result.summary()["Total Changes"], 0)
 
-    def test_cli_mapping_errors_are_actionable_and_do_not_create_reports(self):
+    def test_mapping_errors_are_actionable_and_do_not_create_reports(self):
         cases = [
-            (["OLD:NEW"], "use OLD_NODE=NEW_NODE"),
-            (["OLD="], "use OLD_NODE=NEW_NODE"),
-            (["OLD=NEW=EXTRA"], "use OLD_NODE=NEW_NODE"),
-            (["OLD=NEW", "OLD=NEW"], "OLD ECU node paired more than once"),
-            (["OLD=NEW", "OTHER=NEW"], "NEW ECU nodes paired more than once"),
-            (["OLD=MISSING"], "NEW: MISSING"),
+            ({"OLD": "NEW", "OTHER": "NEW"}, "NEW ECU nodes paired more than once"),
+            ({"OLD": "MISSING"}, "NEW: MISSING"),
         ]
-        for pairs, message in cases:
-            with self.subTest(pairs=pairs):
-                arguments = [item for pair in pairs for item in ("--ecu-pair", pair)]
-                status, _, error = self._cli(*arguments)
-                self.assertEqual(status, 2)
-                self.assertIn(message, error)
+        for ecu_map, message in cases:
+            with self.subTest(ecu_map=ecu_map):
+                with self.assertRaisesRegex(ValueError, message):
+                    self._run(ecu_map=ecu_map)
         self.assertFalse(list(self.root.glob("*.xlsx")))
 
-    def test_cli_mixed_mode_is_usage_error(self):
-        status, _, error = self._cli(new=self.root)
-        self.assertEqual(status, 2)
-        self.assertIn("cannot be mixed", error)
+    def test_mixed_mode_and_non_excel_output_are_input_errors(self):
+        with self.assertRaisesRegex(ValueError, "cannot be mixed"):
+            self._run(new=self.root)
+        with self.assertRaisesRegex(ValueError, "must end with .xlsx"):
+            self._run(self.root / "report.csv")
+        self.assertFalse(list(self.root.glob("*.xlsx")))
 
 
 if __name__ == "__main__":

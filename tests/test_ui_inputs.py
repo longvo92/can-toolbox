@@ -331,11 +331,8 @@ class GuiInputTests(unittest.TestCase):
         self.assertEqual(restored.run_button.text(), "Chạy so sánh")
         self.assertEqual(restored.new_input.text(), str(self.new))
 
-    def test_focus_scan_exports_same_rows_as_cli_and_clears_stale_selection(self):
-        from contextlib import redirect_stderr, redirect_stdout
-        from io import StringIO
-
-        from can_toolbox.cli import main
+    def test_focus_scan_exports_same_rows_as_pipeline_and_clears_stale_selection(self):
+        from can_toolbox.dbc_compare.pipeline import run_comparison
 
         self._files()
         self._save_maps()
@@ -356,23 +353,20 @@ class GuiInputTests(unittest.TestCase):
             self._wait_until(lambda: self.window.run_button.isEnabled())
         self.assertEqual(self.window.focus_hint.text(), "Receiver")
         self.window._set_languages("en", "vi")
-        gui_path, cli_path = self.root / "gui.xlsx", self.root / "cli.xlsx"
+        gui_path, api_path = self.root / "gui.xlsx", self.root / "api.xlsx"
         self.window.output_input.setText(str(gui_path))
         self.window._run_compare()
         self._wait_until(lambda: self.window.run_button.isEnabled())
-        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-            self.assertEqual(main([
-                "--old", str(self.old), "--new", str(self.new), "--out", str(cli_path),
-                "--ecu-pair", "OldNode=NewNode", "--ecu-focus", "Receiver", "--report-language", "vi",
-            ]), 0)
-        gui, cli = load_workbook(gui_path), load_workbook(cli_path)
+        run_comparison(self.old, self.new, api_path, ecu_map={"OldNode": "NewNode"},
+                       focus_nodes={"Receiver"}, language="vi")
+        gui, api = load_workbook(gui_path), load_workbook(api_path)
         try:
             details = "Chi tiết signal"
-            self.assertEqual(list(gui[details].values), list(cli[details].values))
+            self.assertEqual(list(gui[details].values), list(api[details].values))
             self.assertEqual(gui[details].max_row, 2)
         finally:
             gui.close()
-            cli.close()
+            api.close()
 
         with patch(f"{_UI}.EcuPairingDialog") as pairing:
             pairing.return_value.exec.return_value = QDialog.DialogCode.Accepted
@@ -777,11 +771,9 @@ class GuiInputTests(unittest.TestCase):
         self.assertNotEqual(dialog.result(), QDialog.DialogCode.Accepted)
         dialog.deleteLater()
 
-    def test_same_corpus_matches_api_cli_and_gui_metadata_after_excel_roundtrip(self):
-        import contextlib
-        import io
-        from can_toolbox.cli import main as cli_main
+    def test_same_corpus_matches_api_pipeline_and_gui_metadata_after_excel_roundtrip(self):
         from can_toolbox.dbc_compare.core.comparator import DbcComparator
+        from can_toolbox.dbc_compare.pipeline import run_comparison
         from can_toolbox.dbc_compare.report.excel import write_excel_report
         from tests.test_signal_pairing import shifted_dbc
 
@@ -796,9 +788,8 @@ class GuiInputTests(unittest.TestCase):
         old, new = self.root / "old", self.root / "new"
         result = DbcComparator().compare_folders(old, new)
         api_path = write_excel_report(result, self.root / "api.xlsx")
-        cli_path = self.root / "cli.xlsx"
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(cli_main(["--old", str(old), "--new", str(new), "--out", str(cli_path)]), 3)
+        pipeline_result, pipeline_path = run_comparison(old, new, self.root / "pipeline.xlsx")
+        self.assertEqual(pipeline_result.completeness, "Incomplete")
         self.window.old_input.setText(str(old))
         self.window.new_input.setText(str(new))
         self.window.input_mode.setCurrentIndex(0)
@@ -817,7 +808,7 @@ class GuiInputTests(unittest.TestCase):
                         for name in wb.sheetnames}
             finally:
                 wb.close()
-        self.assertEqual(contents(api_path), contents(cli_path))
+        self.assertEqual(contents(api_path), contents(pipeline_path))
         self.assertEqual(contents(api_path), contents(gui_path))
 
     def test_removed_manual_mapping_exports_without_auto_override(self):

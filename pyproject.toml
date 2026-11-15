@@ -37,9 +37,6 @@ Homepage = "https://github.com/longvo92/can-toolbox"
 Issues = "https://github.com/longvo92/can-toolbox/issues"
 Changelog = "https://github.com/longvo92/can-toolbox/blob/main/CHANGELOG.md"
 
-[project.scripts]
-can-toolbox-cli = "can_toolbox.cli:main"
-
 [project.gui-scripts]
 can-toolbox = "can_toolbox.ui.main_window:main"
 

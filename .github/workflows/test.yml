@@ -28,11 +28,8 @@ jobs:
           python -m pip install -e . --no-deps
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-      - name: Compare the bundled example baselines (CLI smoke test)
-        run: |
-          python -m can_toolbox.cli --old examples/old --new examples/new --out report.xlsx
-          python -m can_toolbox.cli --old examples/old --new examples/new --include-unchanged --out impact_review.xlsx
-          python -m can_toolbox.cli --old examples/old/Bus_A.dbc --new examples/new/Bus_A.dbc --out files.xlsx
+      - name: Run the engine smoke test
+        run: python scripts/smoke.py
 
   gui:
     runs-on: windows-latest
