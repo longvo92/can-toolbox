@@ -20,7 +20,7 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 | `ui/compare_tab.py`, `ui/blf_tab.py` | One tab per tool with its own cards, workers, progress, status and log |
 | `ui/widgets.py`, `ui/style.py`, `ui/app.py` | Shared widgets and text binding, theme, entry point |
 
-A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/` and `blf/`.
+A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/` and `blf/`. On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
 
 `tests/test_engine_is_qt_free.py` imports every engine module in a fresh interpreter and fails if PySide6, shiboken6 or tkinter is loaded. The `engine` CI job installs everything except PySide6.
 

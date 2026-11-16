@@ -172,3 +172,32 @@ def test_environment_check_logs_module_status(window):
     assert "[OK] numpy" in log
     assert "MATLAB" in log
     assert tab.run_status.text() in {"Environment ready", "Environment problems found — see log"}
+
+
+def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):
+    from can_toolbox.ui.main_window import migrate_legacy_settings
+
+    legacy = QSettings(str(tmp_path / "legacy.ini"), QSettings.Format.IniFormat)
+    for key, value in (("gui_language", "vi"), ("report_language", "en"), ("input_mode", "files"),
+                       ("last_old_folder", r"C:\old"), ("last_new_folder", r"C:\new"),
+                       ("last_report_path", r"C:\r.xlsx"), ("report_path_is_explicit", True)):
+        legacy.setValue(key, value)
+    settings = QSettings(str(tmp_path / "new.ini"), QSettings.Format.IniFormat)
+    with patch(f"{_SHELL}.QSettings", return_value=settings), \
+            patch(f"{_SHELL}._legacy_settings", return_value=legacy):
+        window = MainWindow()
+    try:
+        assert window._gui_language == "vi" and window._report_language == "en"
+        tab = window.compare_tab
+        assert tab._files_mode()
+        assert (tab.old_input.text(), tab.new_input.text()) == (r"C:\old", r"C:\new")
+        assert tab.output_input.text() == r"C:\r.xlsx"
+    finally:
+        window.close()
+        window.deleteLater()
+    assert legacy.value("gui_language") == "vi"  # 0.8.0 keeps its own settings
+
+    # Later changes are never overwritten by the legacy store.
+    settings.setValue("gui_language", "en")
+    migrate_legacy_settings(settings, legacy)
+    assert settings.value("gui_language") == "en"

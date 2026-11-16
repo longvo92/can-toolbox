@@ -35,6 +35,36 @@ def _read_resource_text(filename: str) -> str:
 # Kept as a module attribute so tests can point Help → Release note at a fixture.
 _changelog_path = changelog_path
 
+# DBC Compare Tool <= 0.8.0 stored these keys unprefixed in its own namespace.
+_LEGACY_KEYS = {
+    "gui_language": "gui_language",
+    "report_language": "report_language",
+    "input_mode": "compare/input_mode",
+    "last_old_folder": "compare/last_old_folder",
+    "last_new_folder": "compare/last_new_folder",
+    "last_report_path": "compare/last_report_path",
+    "report_path_is_explicit": "compare/report_path_is_explicit",
+}
+_MIGRATED_KEY = "migrated_from_dbc_compare_tool"
+
+
+def _legacy_settings() -> QSettings:
+    return QSettings("DbcCompareTool", "DBCCompareTool")
+
+
+def migrate_legacy_settings(settings: QSettings, legacy: QSettings) -> None:
+    """Copy DBC Compare Tool preferences once; values already in ``settings`` win.
+
+    The legacy store is left untouched so 0.8.0 keeps working side by side.
+    """
+    if settings.value(_MIGRATED_KEY, False, type=bool):
+        return
+    for old_key, new_key in _LEGACY_KEYS.items():
+        if legacy.contains(old_key) and not settings.contains(new_key):
+            settings.setValue(new_key, legacy.value(old_key))
+    settings.setValue(_MIGRATED_KEY, True)
+    settings.sync()
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -43,6 +73,7 @@ class MainWindow(QMainWindow):
         self.resize(1000, 780)
         self.setMinimumSize(720, 520)
         self._settings = QSettings("CanToolbox", "CANToolbox")
+        migrate_legacy_settings(self._settings, _legacy_settings())
         self._gui_language = self._language_preference("gui_language", LANGUAGES, "en")
         self._report_language = self._language_preference("report_language", ("gui", *LANGUAGES), "gui")
         self._binder = TextBinder(self._gui_language)

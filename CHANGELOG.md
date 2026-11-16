@@ -31,7 +31,7 @@ DBC Compare Tool becomes **CAN Toolbox** (planned as 1.0.0) and absorbs the BLF 
 ### Migration
 
 - Python imports move from `dbc_compare_tool.core` / `.report` to `can_toolbox.dbc_compare.core` / `.report`, and from `blf_to_mat` to `can_toolbox.blf_mat`.
-- Saved paths and language choices start fresh once. `signal_mapping.yaml` is loaded from beside the app instead of beside the `.pyz` archive.
+- Saved DBC Compare paths and language choices are copied from DBC Compare Tool on first start. `signal_mapping.yaml` is loaded from beside the app instead of beside the `.pyz` archive.
 
 ## [0.8.0] - 2026-11-06
 
