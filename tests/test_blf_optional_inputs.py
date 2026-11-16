@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import can
-import pandas as pd
 import pytest
 from scipy.io import loadmat
 
 from can_toolbox.blf_mat import converter as core
+from can_toolbox.blf_mat import mapping
 from can_toolbox.blf_mat import options as blf_options
 from can_toolbox.blf_mat.options import ConversionOptions, OptionError, run_conversion
+from tests.workbooks import table, write_workbook
 
 pytestmark = pytest.mark.usefixtures("blf_runtime")
 
@@ -97,7 +98,7 @@ def test_txt_workflow_without_workbook_or_matlab(sample, monkeypatch, dbc):
     def forbidden(*args, **kwargs):
         raise AssertionError("TXT workflow must not read Excel or launch MATLAB")
 
-    monkeypatch.setattr(core.pd, "ExcelFile", forbidden)
+    monkeypatch.setattr(mapping, "Workbook", forbidden)
     monkeypatch.setattr(core, "run_matlab_batch", forbidden)
     fields = with_dbc(sample) if dbc else basic(sample)
     run(**fields, schema=(str(sample["schema"]), str(second)))
@@ -177,12 +178,10 @@ def test_explicit_txt_sides_with_excel(sample):
     sample["schema"].write_text("Shared.Speed : single\n")
     output_schema = sample["root"] / "output.txt"
     output_schema.write_text("Shared.Speed : uint8\n")
-    excel = sample["root"] / "sides.xlsx"
-    with pd.ExcelWriter(excel) as writer:
-        for sheet, source in (("SWC_INF", "SpeedCAN"), ("SWC_OUTF", "RequestCAN")):
-            pd.DataFrame(
-                {"Interface": ["Shared"], "Data Element": ["Speed"], "CAN Signal": [source]}
-            ).to_excel(writer, sheet_name=sheet, index=False)
+    excel = write_workbook(sample["root"] / "sides.xlsx", {
+        sheet: table({"Interface": ["Shared"], "Data Element": ["Speed"], "CAN Signal": [source]})
+        for sheet, source in (("SWC_INF", "SpeedCAN"), ("SWC_OUTF", "RequestCAN"))
+    })
     run(
         **with_dbc(
             sample, excel=str(excel), input_schema=str(sample["schema"]), output_schema=str(output_schema)
@@ -240,19 +239,15 @@ def test_force_without_excel_schema_or_dbc(sample):
 
 
 def custom_excel(sample, rows=None):
-    path = sample["root"] / "custom.xlsx"
-    with pd.ExcelWriter(path) as writer:
-        pd.DataFrame([["Notes only"]]).to_excel(
-            writer, sheet_name="Notes", header=False, index=False
-        )
-        pd.DataFrame(
-            rows
-            or [
-                ["Group", "Wire label", "Target name", "Storage"],
-                ["Vehicle", "SpeedCAN", "Speed", "single"],
-            ]
-        ).to_excel(writer, sheet_name="Any Project", header=False, index=False, startrow=3)
-    return path
+    rows = rows or [
+        ["Group", "Wire label", "Target name", "Storage"],
+        ["Vehicle", "SpeedCAN", "Speed", "single"],
+    ]
+    return write_workbook(
+        sample["root"] / "custom.xlsx",
+        {"Notes": [["Notes only"]], "Any Project": rows},
+        start_rows={"Any Project": 3},
+    )
 
 
 @pytest.mark.parametrize(
@@ -295,12 +290,10 @@ def test_output_only_sheet_and_unknown_sheet_errors(sample):
 
 
 def test_multiple_input_sheets(sample):
-    excel = sample["root"] / "multi.xlsx"
-    with pd.ExcelWriter(excel) as writer:
-        for sheet, bus, source in (("A", "Vehicle", "SpeedCAN"), ("B", "Controller", "RequestCAN")):
-            pd.DataFrame({"Bus": [bus], "CAN Signal": [source]}).to_excel(
-                writer, sheet_name=sheet, index=False
-            )
+    excel = write_workbook(sample["root"] / "multi.xlsx", {
+        sheet: table({"Bus": [bus], "CAN Signal": [source]})
+        for sheet, bus, source in (("A", "Vehicle", "SpeedCAN"), ("B", "Controller", "RequestCAN"))
+    })
     run(**with_dbc(sample, excel=str(excel), input_sheets=("A", "B")))
     scenario = loadmat(sample["output"] / "sample_input.mat", simplify_cells=True)["Scenario"]
     assert list(scenario) == ["Vehicle", "Controller"]
@@ -308,23 +301,19 @@ def test_multiple_input_sheets(sample):
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_excel_keywords_filter_all_cells_on_both_sides(sample, explicit, capsys):
-    excel = sample["root"] / "filtered.xlsx"
-    with pd.ExcelWriter(excel) as writer:
-        for sheet in ("SWC_INF", "SWC_OUTF"):
-            pd.DataFrame(
-                [
-                    ["Vehicle", "Speed", "SpeedCAN", "single", ""],
-                    ["", "Speed", "RequestCAN", "single", "Marked OBSOLETE today"],
-                    ["", "Ignored", "SpeedCAN", "invalid", "literal [skip] marker"],
-                    ["", "Kept", "RequestCAN", "uint8", "skipping is not a literal marker"],
-                    ["", "ObsoleteTarget", "SpeedCAN", "single", ""],
-                    ["", "BadSource", "ObsoleteCAN", "single", ""],
-                    ["ObsoleteBus", "BadBus", "SpeedCAN", "single", ""],
-                    ["Other", "BadType", "SpeedCAN", "obsolete_type", ""],
-                    ["", "Inherited", "RequestCAN", "uint8", ""],
-                ],
-                columns=["Interface", "Data Element", "CAN Signal", "Type", "Notes"],
-            ).to_excel(writer, sheet_name=sheet, index=False)
+    rows = [
+        ["Interface", "Data Element", "CAN Signal", "Type", "Notes"],
+        ["Vehicle", "Speed", "SpeedCAN", "single", ""],
+        ["", "Speed", "RequestCAN", "single", "Marked OBSOLETE today"],
+        ["", "Ignored", "SpeedCAN", "invalid", "literal [skip] marker"],
+        ["", "Kept", "RequestCAN", "uint8", "skipping is not a literal marker"],
+        ["", "ObsoleteTarget", "SpeedCAN", "single", ""],
+        ["", "BadSource", "ObsoleteCAN", "single", ""],
+        ["ObsoleteBus", "BadBus", "SpeedCAN", "single", ""],
+        ["Other", "BadType", "SpeedCAN", "obsolete_type", ""],
+        ["", "Inherited", "RequestCAN", "uint8", ""],
+    ]
+    excel = write_workbook(sample["root"] / "filtered.xlsx", {"SWC_INF": rows, "SWC_OUTF": rows})
     sample["config"].write_text('excel_skip_keywords: [" ObSoLeTe ", "[skip]"]\n')
     fields = with_dbc(sample, excel=str(excel), config=str(sample["config"]))
     if explicit:
@@ -465,3 +454,33 @@ def test_missing_blf_is_an_option_error(sample):
         run(blf="")
     with pytest.raises(OptionError, match="No .blf files"):
         run(blf=str(sample["root"] / "dbc"))
+
+
+def test_workbook_grid_matches_the_former_pandas_reader(tmp_path):
+    from openpyxl import Workbook as OpenpyxlWorkbook
+
+    path = tmp_path / "grid.xlsx"
+    book = OpenpyxlWorkbook()
+    sheet = book.active
+    sheet.title = "Map"
+    sheet["B3"], sheet["C3"], sheet["D3"] = "Interface", "CAN Signal", "Type"
+    sheet["B4"], sheet["C4"], sheet["D4"] = "NA", " N/A ", 2.0
+    sheet["C5"], sheet["F5"] = 2.5, "far"
+    sheet["C6"] = "=1+1"  # no cached value: read as blank
+    sheet.merge_cells("B7:C7")
+    sheet["B7"] = "merged"
+    book.create_sheet("Empty")
+    book.save(path)
+    with mapping.Workbook(path) as workbook:
+        assert workbook.sheet_names == ["Map", "Empty"]
+        assert workbook.grid("Empty") == []
+        grid = workbook.grid("Map")
+    assert len(grid) == 7 and {len(row) for row in grid} == {6}
+    assert grid[0] == [None] * 6
+    assert grid[2][1:4] == ["Interface", "CAN Signal", "Type"]
+    # Exact NA texts become blank, padded ones are kept; integral floats become int.
+    assert grid[3][1:4] == [None, " N/A ", 2]
+    assert isinstance(grid[3][3], int)
+    assert grid[4][2:] == [2.5, None, None, "far"]
+    assert grid[5][2] is None
+    assert grid[6][1:3] == ["merged", None]

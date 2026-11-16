@@ -7,7 +7,7 @@ Compare CAN DBC files or baseline folders and generate an engineering-grade Exce
 - `scripts/` (`build.py`, `release_check.py`, `evaluate_pairing.py`), `examples/`, `resources/help/`, `tests/`; Windows launcher `run_gui.bat`.
 
 ## Runtime
-- Python >=3.11; PySide6, cantools, openpyxl, numpy, pandas, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
+- Python >=3.11; PySide6, cantools, openpyxl, numpy, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
 
 ## Commands
 - Environment: `PYTHONPATH=src` (tests must import the working tree, not an installed copy).

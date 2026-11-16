@@ -19,9 +19,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 # Heavy numeric packages load on the first conversion, so the window opens
-# without importing numpy, pandas or scipy.
+# without importing numpy or scipy.
 np: Any = None
-pd: Any = None
 savemat: Any = None
 can: Any = None
 cantools: Any = None
@@ -29,13 +28,12 @@ yaml: Any = None
 
 
 def load_runtime_dependencies() -> None:
-    global np, pd, savemat, can, cantools, yaml
+    global np, savemat, can, cantools, yaml
 
     try:
         import can as _can
         import cantools as _cantools
         import numpy as _np
-        import pandas as _pd
         import yaml as _yaml
         from scipy.io import savemat as _savemat
     except ImportError as exc:
@@ -43,11 +41,10 @@ def load_runtime_dependencies() -> None:
         raise RuntimeError(
             f"Missing Python dependency: {missing}\n"
             "Reinstall CAN Toolbox; the BLF converter needs python-can, cantools, numpy, "
-            "pandas, openpyxl, scipy and PyYAML."
+            "openpyxl, scipy and PyYAML."
         ) from exc
 
     np = _np
-    pd = _pd
     savemat = _savemat
     can = _can
     cantools = _cantools
@@ -779,12 +776,15 @@ def load_dbc_folder(
 
 
 def value_match_score(
-    series: pd.Series,
+    values: Iterable[Any],
     known_norms: set[str],
     take_last_token: bool = False,
 ) -> int:
     hits = 0
-    for v in series.dropna().astype(str):
+    for value in values:
+        if value is None:
+            continue
+        v = str(value)
         n = norm(last_token(v) if take_last_token else v)
         if n and n in known_norms:
             hits += 1

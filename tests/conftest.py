@@ -19,7 +19,8 @@ def blf_runtime():
 @pytest.fixture
 def sample(tmp_path: Path, blf_runtime) -> dict[str, object]:
     import can
-    import pandas as pd
+
+    from tests.workbooks import table, write_workbook
 
     dbc = tmp_path / "dbc"
     dbc.mkdir()
@@ -30,14 +31,10 @@ def sample(tmp_path: Path, blf_runtime) -> dict[str, object]:
         ' SG_ RequestCAN : 8|8@1+ (1,0) [0|255] "" ECU\n',
         encoding="ascii",
     )
-    excel = tmp_path / "interfaces.xlsx"
-    with pd.ExcelWriter(excel, engine="openpyxl") as writer:
-        pd.DataFrame(
-            {"Interface": ["BSW_CanInp"], "Data Element": ["Speed"], "CAN Signal": ["SpeedCAN"]}
-        ).to_excel(writer, sheet_name="SWC_INF", index=False)
-        pd.DataFrame(
-            {"Interface": ["BSW_CanOut"], "Data Element": ["Request"], "CAN Signal": ["RequestCAN"]}
-        ).to_excel(writer, sheet_name="SWC_OUTF", index=False)
+    excel = write_workbook(tmp_path / "interfaces.xlsx", {
+        "SWC_INF": table({"Interface": ["BSW_CanInp"], "Data Element": ["Speed"], "CAN Signal": ["SpeedCAN"]}),
+        "SWC_OUTF": table({"Interface": ["BSW_CanOut"], "Data Element": ["Request"], "CAN Signal": ["RequestCAN"]}),
+    })
     schema = tmp_path / "schema.txt"
     schema.write_text(
         "BSW_CanInp.Speed : single\nBSW_CanInp.Enable : boolean\nBSW_CanOut.Request : uint8\n",

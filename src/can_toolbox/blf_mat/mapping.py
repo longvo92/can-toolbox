@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from . import converter as core
@@ -30,12 +32,68 @@ class MappingSetup:
     output_specific: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
+# Cell texts treated as blank, as pandas.read_excel did before this reader replaced it.
+NA_STRINGS = frozenset({
+    "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND", "1.#QNAN",
+    "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null",
+})
+
+
+def _cell_value(value: Any) -> Any:
+    if isinstance(value, str) and value in NA_STRINGS:
+        return None
+    if isinstance(value, float):
+        if math.isnan(value):
+            return None
+        if value.is_integer():
+            return int(value)
+    return value
+
+
+class Workbook:
+    """Read-only workbook giving each sheet as a rectangular grid of cell values.
+
+    Trailing empty rows and columns are dropped and NA-like texts become ``None``.
+    """
+
+    def __init__(self, path: Path) -> None:
+        from openpyxl import load_workbook
+
+        self._book = load_workbook(path, read_only=True, data_only=True, keep_links=False)
+
+    def __enter__(self) -> Workbook:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._book.close()
+
+    @property
+    def sheet_names(self) -> list[str]:
+        return list(self._book.sheetnames)
+
+    def grid(self, sheet: str) -> list[list[Any]]:
+        worksheet = self._book[sheet]
+        if hasattr(worksheet, "reset_dimensions"):
+            # Read-only sheets may carry wrong stored dimensions.
+            worksheet.reset_dimensions()
+        rows = []
+        for values in worksheet.iter_rows(values_only=True):
+            row = [_cell_value(value) for value in values]
+            while row and row[-1] is None:
+                row.pop()
+            rows.append(row)
+        while rows and not rows[-1]:
+            rows.pop()
+        width = max((len(row) for row in rows), default=0)
+        return [row + [None] * (width - len(row)) for row in rows]
+
+
 def cell(value: Any) -> str:
-    return "" if value is None or core.pd.isna(value) else str(value).strip()
+    return "" if value is None else str(value).strip()
 
 
-def column_index(raw: Any, row: int, option: str | None, kind: str) -> int | None:
-    headers = [core.norm(cell(value)) for value in raw.iloc[row]]
+def column_index(raw: list[list[Any]], row: int, option: str | None, kind: str) -> int | None:
+    headers = [core.norm(cell(value)) for value in raw[row]]
     if option:
         if option.isdigit():
             index = int(option) - 1
@@ -62,21 +120,20 @@ def read_sheet(
     known_can: set[str],
     skip_keywords: tuple[str, ...] = (),
 ) -> list[tuple[str, str, str, str]]:
-    raw = core.pd.read_excel(book, sheet_name=sheet, header=None, dtype=object)
-    if raw.empty:
+    raw = book.grid(sheet)
+    width = len(raw[0]) if raw else 0
+    if not width:
         return []
-    excluded = raw.apply(
-        lambda row: any(
-            keyword in cell(value).casefold() for value in row for keyword in skip_keywords
-        ),
-        axis=1,
-    )
+    excluded = [
+        any(keyword in cell(value).casefold() for value in values for keyword in skip_keywords)
+        for values in raw
+    ]
     rows = [paths.header_row - 1] if paths.header_row else range(min(20, len(raw)))
     candidates = []
     for row in rows:
         if row >= len(raw):
             raise RuntimeError(f"Header row exceeds sheet {sheet!r} length.")
-        data = raw.iloc[row + 1 :].loc[~excluded]
+        data = [values for index, values in enumerate(raw) if index > row and not excluded[index]]
         try:
             columns = {
                 kind: column_index(raw, row, getattr(paths, f"{kind}_column"), kind)
@@ -88,16 +145,16 @@ def read_sheet(
             continue
         if columns["can"] is None and known_can:
             scores = [
-                (core.value_match_score(data.iloc[:, index], known_can, True), index)
-                for index in range(raw.shape[1])
+                (core.value_match_score([values[index] for values in data], known_can, True), index)
+                for index in range(width)
             ]
             scores.sort(reverse=True)
             if scores and scores[0][0] and (len(scores) == 1 or scores[0][0] > scores[1][0]):
                 columns["can"] = scores[0][1]
         if columns["element"] is None and known_elements:
             scores = [
-                (core.value_match_score(data.iloc[:, index], known_elements, True), index)
-                for index in range(raw.shape[1])
+                (core.value_match_score([values[index] for values in data], known_elements, True), index)
+                for index in range(width)
                 if index != columns["can"]
             ]
             scores.sort(reverse=True)
@@ -111,11 +168,11 @@ def read_sheet(
         if len(selected) != len(set(selected)):
             continue
         hints = sum(
-            core.norm(cell(raw.iat[row, index])) in {core.norm(h) for h in HEADERS[kind]}
+            core.norm(cell(raw[row][index])) in {core.norm(h) for h in HEADERS[kind]}
             for kind, index in columns.items()
             if index is not None
         )
-        hits = core.value_match_score(data.iloc[:, columns["can"]], known_can, True)
+        hits = core.value_match_score([values[columns["can"]] for values in data], known_can, True)
         candidates.append((hints * 100 + hits, -row, columns))
     if not candidates:
         raise RuntimeError(
@@ -132,12 +189,12 @@ def read_sheet(
     skipped = 0
     for row in range(header + 1, len(raw)):
         values = {
-            kind: cell(raw.iat[row, index]) if index is not None else ""
+            kind: cell(raw[row][index]) if index is not None else ""
             for kind, index in columns.items()
         }
         if values["interface"]:
             current_interface = values["interface"]
-        if excluded.iat[row]:
+        if excluded[row]:
             skipped += 1
             continue
         source = values["can"]
@@ -262,7 +319,7 @@ def resolve_setup(
         core.norm(element["name"]) for bus in setup.interfaces for element in bus["elements"]
     }
     if paths.excel:
-        with core.pd.ExcelFile(paths.excel, engine="openpyxl") as book:
+        with Workbook(paths.excel) as book:
             explicit = bool(paths.input_sheets or paths.output_sheets)
             if explicit:
                 inputs = [core.resolve_excel_sheet_name(book, name) for name in paths.input_sheets]
