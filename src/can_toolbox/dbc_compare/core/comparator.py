@@ -12,7 +12,6 @@ from can_toolbox.dbc_compare.core.ecu import (
     validate_dbc_input,
     validate_ecu_map,
 )
-from can_toolbox.dbc_compare.core.focus import restrict_focus_overview
 from can_toolbox.dbc_compare.core.models import (
     Change,
     ComparisonResult,
@@ -623,24 +622,6 @@ class DbcComparator:
                     file_pair_paths=file_pair_paths,
                 )
             )
-
-
-def filter_result(result: ComparisonResult, selected_types: set[str]) -> ComparisonResult:
-    """Keep only the change types the user asked for.
-
-    An empty selection means "no filter" and returns the result unchanged.
-    Include Unchanged bypasses type filtering to preserve the complete inventory.
-    Only ECU-focused results restrict the DBC Overview to exported details.
-    """
-    if not selected_types or result.include_unchanged:
-        return result
-    filtered = replace(
-        result,
-        message_changes=[c for c in result.message_changes if c.change_type in selected_types],
-        signal_changes=[c for c in result.signal_changes if c.change_type in selected_types],
-        ecu_map=dict(result.ecu_map),
-    )
-    return restrict_focus_overview(filtered)
 
 
 def _get_property_diffs(

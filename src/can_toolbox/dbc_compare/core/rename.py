@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Generic, Iterable, Protocol, TypeVar
+from typing import Generic, Iterable, TypeVar
 
 from can_toolbox.dbc_compare.core.ecu import receivers_match, transmitters_match
 from can_toolbox.dbc_compare.core.models import Message, Signal, jaccard
@@ -20,19 +20,6 @@ class RenameMatch(Generic[T]):
     confidence: float
     confidence_level: str  # "High", "Medium", or "Low"
     reasons: tuple[str, ...]
-
-
-class RenameDetector(Protocol[T]):
-    threshold: float
-
-    def score(self, old: T, new: T) -> tuple[float, tuple[str, ...]]:
-        ...
-
-    def match(self, old_items: Iterable[T], new_items: Iterable[T]) -> list[RenameMatch[T]]:
-        ...
-
-    def get_confidence_level(self, confidence: float) -> str:
-        ...
 
 
 class GreedyRenameDetector(Generic[T]):
@@ -153,14 +140,6 @@ class EventMessageDetector:
         # If one signature appears in 60%+ of signals, it's repetitive
         max_count = max(signatures.values())
         return max_count / len(signals) >= cls.PROPERTY_REPETITION_THRESHOLD
-
-    @classmethod
-    def get_warning(cls) -> str:
-        """Return a warning message for Event Matrix messages."""
-        return (
-            "Rename detection confidence is reduced because this message appears to be "
-            "an Event Matrix message with many structurally identical signals."
-        )
 
 
 class MessageRenameDetector(GreedyRenameDetector[Message]):

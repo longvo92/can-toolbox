@@ -2,55 +2,56 @@
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
+
+import numpy as np
+
+from can_toolbox.canlog.blf import read_blf
+from can_toolbox.canlog.table import (
+    FLAG_BRS,
+    FLAG_ERROR,
+    FLAG_ESI,
+    FLAG_EXTENDED,
+    FLAG_FD,
+    FLAG_REMOTE,
+    FLAG_RX,
+    dlc_to_length,
+)
 
 from . import converter as core
 
+_FLAG_FIELDS = (
+    ("Extended", FLAG_EXTENDED),
+    ("FD", FLAG_FD),
+    ("Remote", FLAG_REMOTE),
+    ("Error", FLAG_ERROR),
+    ("BRS", FLAG_BRS),
+    ("ESI", FLAG_ESI),
+    ("Rx", FLAG_RX),
+)
+
 
 def export_frames(blf: Path, target: Path) -> float:
-    frames = []
-    with core.can.BLFReader(blf) as reader:
-        for frame in reader:
-            if not math.isfinite(frame.timestamp):
-                raise RuntimeError(f"BLF contains a non-finite timestamp: {blf}")
-            if len(frame.data) > 64:
-                raise RuntimeError(f"CAN payload exceeds 64 bytes: {blf}")
-            frames.append(frame)
-    if not frames:
+    table, info = read_blf(blf)
+    core.warn_skipped_objects(info)
+    if not len(table):
         raise RuntimeError(f"BLF contains no CAN frames: {blf}")
-    origin = min(frame.timestamp for frame in frames)
-    payload = core.np.zeros((len(frames), 64), dtype=core.np.uint8)
-    for index, frame in enumerate(frames):
-        payload[index, : len(frame.data)] = list(frame.data)
+    timestamps = table.timestamps()
+    origin = float(timestamps.min())
+    lengths = table.lengths()
+    fd = table.has_flag(FLAG_FD)
     fields = {
-        "Time": core.np.asarray(
-            [frame.timestamp - origin for frame in frames], dtype=core.np.float64
-        ),
-        "Timestamp": core.np.asarray([frame.timestamp for frame in frames], dtype=core.np.float64),
-        "ID": core.np.asarray([frame.arbitration_id for frame in frames], dtype=core.np.uint32),
-        "Channel": core.np.asarray(
-            [frame.channel if frame.channel is not None else -1 for frame in frames],
-            dtype=core.np.int32,
-        ),
-        "DLC": core.np.asarray([frame.dlc for frame in frames], dtype=core.np.uint8),
-        "Length": core.np.asarray([len(frame.data) for frame in frames], dtype=core.np.uint8),
-        "Data": payload,
+        "Time": timestamps - origin,
+        "Timestamp": timestamps,
+        "ID": table.arbitration_id.astype(np.uint32),
+        # MAT layout contract: 0-based channel (-1 unknown) and DLC as a byte count for CAN FD.
+        "Channel": table.channel.astype(np.int32) - 1,
+        "DLC": np.where(fd, dlc_to_length(table.dlc), table.dlc).astype(np.uint8),
+        "Length": lengths.astype(np.uint8),
+        "Data": table.payload_matrix(np.arange(len(table)), 64),
     }
-    for label, attribute in (
-        ("Extended", "is_extended_id"),
-        ("FD", "is_fd"),
-        ("Remote", "is_remote_frame"),
-        ("Error", "is_error_frame"),
-        ("BRS", "bitrate_switch"),
-        ("ESI", "error_state_indicator"),
-        ("Rx", "is_rx"),
-    ):
-        fields[label] = core.np.asarray(
-            [getattr(frame, attribute) for frame in frames], dtype=core.np.bool_
-        )
-    core.savemat(
-        target, {"Frames": fields}, do_compression=True, long_field_names=True, oned_as="column"
-    )
-    core.log(f"  Frames: {len(frames)} CAN/CAN-FD frames -> {target}")
-    return max(core.MIN_FALLBACK_DURATION_S, max(frame.timestamp for frame in frames) - origin)
+    for label, flag in _FLAG_FIELDS:
+        fields[label] = table.has_flag(flag)
+    core.savemat(target, {"Frames": fields}, do_compression=True, long_field_names=True, oned_as="column")
+    core.log(f"  Frames: {len(table)} CAN/CAN-FD frames -> {target}")
+    return max(core.MIN_FALLBACK_DURATION_S, float(timestamps.max()) - origin)

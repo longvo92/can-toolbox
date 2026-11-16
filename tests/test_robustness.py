@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from can_toolbox.dbc_compare.core.comparator import DbcComparator
-from can_toolbox.dbc_compare.core.discovery import discover_dbc_pairs
+from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc
 
@@ -112,10 +112,8 @@ class TestDiscoveryCaseInsensitive(unittest.TestCase):
             new.mkdir()
             (old / "BUS.DBC").write_text(_GOOD_DBC, encoding="utf-8")
             (new / "BUS.DBC").write_text(_GOOD_DBC, encoding="utf-8")
-            pairs = discover_dbc_pairs(old, new)
-            self.assertEqual(len(pairs), 1)
-            self.assertIsNotNone(pairs[0].old_path)
-            self.assertIsNotNone(pairs[0].new_path)
+            self.assertEqual(list(collect_dbc_files(old)), ["BUS.DBC"])
+            self.assertEqual(list(collect_dbc_files(new)), ["BUS.DBC"])
 
 
 class TestDuplicateMessageNames(unittest.TestCase):

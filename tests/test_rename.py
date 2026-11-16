@@ -307,10 +307,6 @@ class TestEventMessageDetector(unittest.TestCase):
         })
         self.assertFalse(EventMessageDetector.is_event_like(msg))
 
-    def test_warning_message_is_string(self):
-        self.assertIsInstance(EventMessageDetector.get_warning(), str)
-        self.assertGreater(len(EventMessageDetector.get_warning()), 0)
-
 
 if __name__ == "__main__":
     unittest.main()

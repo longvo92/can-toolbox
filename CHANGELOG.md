@@ -10,6 +10,15 @@ for the procedure.
 
 ## [Unreleased]
 
+### Changed
+
+- **BLF → MAT** reads and decodes logs many times faster; output files are unchanged.
+- The conversion log names BLF content that MAT files cannot carry, such as markers or comments.
+
+### Removed
+
+- The zipapp download; the Windows `.exe` is the only release artifact.
+
 ## [1.0.0] - 2026-11-16
 
 DBC Compare Tool becomes **CAN Toolbox** and absorbs the BLF to MAT converter (blf2mat 0.1.3).

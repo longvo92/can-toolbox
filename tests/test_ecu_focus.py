@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from openpyxl import load_workbook
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs
 from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
@@ -130,7 +130,6 @@ class EcuFocusTests(unittest.TestCase):
             self.assertEqual(focus.completeness, "Incomplete")
             self.assertEqual(focus.diagnostics, result.diagnostics)
             self.assertEqual(focus.coverage, result.coverage)
-            self.assertEqual(filter_result(focus, {"Added"}).file_pairs, [])
             self.assertIn("SomeoneElse", result.new_nodes)
             self.assertIn("Spare", result.old_nodes)
 

@@ -25,11 +25,6 @@ def validate_dbc_input(path: Path) -> None:
         raise ValueError(f"Input must be a folder or a .dbc file: {path}")
 
 
-def collect_ecu_nodes(path: Path) -> list[str]:
-    """Discover selectable ECU nodes; skip invalid files in folder mode like comparison."""
-    return _scan_ecu_nodes(Path(path), "")[0]
-
-
 def scan_ecu_inputs(
     old_path: Path, new_path: Path,
 ) -> tuple[list[str], list[str], list[Diagnostic]]:

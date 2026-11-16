@@ -9,7 +9,7 @@ from collections.abc import Callable
 from can_toolbox import __version__
 from can_toolbox.blf_mat.options import find_matlab_executable
 
-MODULES = ("numpy", "scipy.io", "can", "cantools", "openpyxl", "yaml")
+MODULES = ("numpy", "numba", "scipy.io", "can", "cantools", "openpyxl", "yaml")
 
 
 def check_environment(

@@ -119,7 +119,7 @@ def test_force_mapping_conflict_rejected(tmp_path):
         "input_mappings:\n- {interface: Bus, element: Value, can_signal: CAN}\ninput_forces:\n- {interface: Bus, element: Value, value: 1}\n"
     )
     with pytest.raises(RuntimeError, match="both input_mappings and input_forces"):
-        core.load_input_mapping_config(config)
+        core.parse_input_mapping_config(core.load_mapping_config(config))
 
 
 def test_matlab_command_and_quoting(tmp_path, monkeypatch):

@@ -3,7 +3,7 @@
 import unittest
 from pathlib import Path
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.models import ComparisonResult
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -81,13 +81,6 @@ class TestCompareFolders(unittest.TestCase):
             progress_callback=messages.append,
         )
         self.assertTrue(any("Bus_A.dbc" in m for m in messages))
-
-
-class TestCompareWithFilter(unittest.TestCase):
-    def test_filter_preserves_file_pairs(self):
-        result = DbcComparator().compare_folders(_OLD_FOLDER, _NEW_FOLDER)
-        filtered = filter_result(result, {"Added"})
-        self.assertEqual(filtered.file_pairs, result.file_pairs)
 
 
 if __name__ == "__main__":

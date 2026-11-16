@@ -89,13 +89,13 @@ jobs:
       - name: Run the engine and window smoke test
         run: python scripts/smoke.py --gui
 
-      - name: Build the exe and the zipapp
+      - name: Build the exe
         run: python scripts/build.py
 
-      # Both artifacts get started, not just built. A PyInstaller bundle that is
+      # The exe gets started, not just built. A PyInstaller bundle that is
       # missing a module fails here and nowhere else — the unit suite imports
       # from source and never sees it.
-      - name: Start both artifacts
+      - name: Start the exe
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
@@ -117,16 +117,6 @@ jobs:
           }
 
           Start-AndCheck "exe" "dist/CanToolbox-$version.exe" $null
-          Start-AndCheck "zipapp" "python" @("dist/CanToolbox-$version.pyzw")
-
-      # The zipapp is not standalone: _resource_path() resolves next to the
-      # .pyzw, so resources/ has to travel with it.
-      - name: Bundle the zipapp with its resources
-        shell: pwsh
-        run: |
-          $version = "${{ inputs.version }}"
-          $parts = @("dist/CanToolbox-$version.pyzw", "dist/resources")
-          Compress-Archive -Path $parts -DestinationPath "dist/CanToolbox-$version-zipapp.zip"
 
       # uploaded on a rehearsal too: the point of a rehearsal is being able to
       # look at what would have shipped
@@ -135,7 +125,6 @@ jobs:
           name: CanToolbox-${{ inputs.version }}
           path: |
             dist/CanToolbox-${{ inputs.version }}.exe
-            dist/CanToolbox-${{ inputs.version }}-zipapp.zip
             RELEASE_NOTES.md
 
       - name: Publish
@@ -148,8 +137,7 @@ jobs:
             --target "${{ github.sha }}" \
             --title "v${{ inputs.version }}" \
             --notes-file RELEASE_NOTES.md \
-            "dist/CanToolbox-${{ inputs.version }}.exe" \
-            "dist/CanToolbox-${{ inputs.version }}-zipapp.zip"
+            "dist/CanToolbox-${{ inputs.version }}.exe"
 
       - name: Rehearsal only
         if: ${{ !inputs.publish }}

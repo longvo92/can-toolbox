@@ -2,18 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from can_toolbox.dbc_compare.core.models import FilePair
-
-
-def discover_dbc_pairs(old_folder: Path, new_folder: Path) -> list[FilePair]:
-    old_files = collect_dbc_files(old_folder)
-    new_files = collect_dbc_files(new_folder)
-    relative_paths = sorted(set(old_files) | set(new_files))
-    return [
-        FilePair(relative_path=relative, old_path=old_files.get(relative), new_path=new_files.get(relative))
-        for relative in relative_paths
-    ]
-
 
 def collect_dbc_files(folder: Path) -> dict[str, Path]:
     if not folder.exists() or not folder.is_dir():

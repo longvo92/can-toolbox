@@ -11,8 +11,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 
 _PROBE = """
 import importlib, pkgutil, sys
-import can_toolbox.blf_mat, can_toolbox.dbc_compare
-for package in (can_toolbox.dbc_compare, can_toolbox.blf_mat):
+import can_toolbox.blf_mat, can_toolbox.canlog, can_toolbox.dbc_compare
+for package in (can_toolbox.dbc_compare, can_toolbox.blf_mat, can_toolbox.canlog):
     for module in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
         importlib.import_module(module.name)
 import can_toolbox.blf_mat.converter as converter
