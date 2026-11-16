@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng
 
-CAN Toolbox có hai tab. Mở **Cài đặt → Ngôn ngữ…** để đổi giữa English và Tiếng Việt.
+CAN Toolbox có ba tab. Mở **Cài đặt → Ngôn ngữ…** để đổi giữa English và Tiếng Việt.
 
 ## So sánh DBC
 
@@ -38,3 +38,15 @@ CAN Toolbox có hai tab. Mở **Cài đặt → Ngôn ngữ…** để đổi gi
 | Có TXT, Excel hoặc YAML | `<log>_input.mat` và/hoặc `<log>_output.mat` |
 
 Signal giữ timestamp CAN tính từ frame đầu tiên; tool không resample. Datatype số nguyên được làm tròn và bão hòa như MATLAB. File trùng tên sẽ bị ghi đè.
+
+## Xem log
+
+1. Bấm **Mở log…** hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào tab. Log lớn được đọc ở nền; bấm **Hủy** để dừng.
+2. Bấm **File DBC…** để thêm database và gán mỗi file cho **Mọi channel** hoặc một CAN channel. DBC gán cho channel cụ thể được ưu tiên; kéo thả file `.dbc` vào tab sẽ thêm cho mọi channel.
+3. Trace liệt kê mọi frame: thời gian, channel, ID (ID extended có hậu tố `x` như CANoe), tên message, hướng, loại, DLC và dữ liệu. Error frame tô màu đỏ.
+4. Chọn một frame để xem các signal đã giải mã: giá trị vật lý hoặc text của value table, giá trị raw và đơn vị.
+5. **Lọc** nhận ID, khoảng ID và một phần tên, ví dụ `100, 200-2FF, 18FF00x, Engine`; nhấn Enter để áp dụng. **Channel**, **Hướng** và **Error frame** lọc thêm.
+6. **Chế độ → Vị trí cố định** chỉ hiện frame mới nhất của mỗi channel và ID. **Thời gian → Tuyệt đối** hiện giờ thực khi log có ghi thời điểm bắt đầu.
+7. **Tìm** nhảy tới frame kế tiếp hoặc trước đó khớp ID hoặc tên. **Thống kê** liệt kê số lượng và chu kỳ của từng message; **Thông tin log** hiện file, thời điểm bắt đầu, các DBC và những nội dung bị bỏ qua khi đọc, như marker hoặc object LIN trong BLF.
+
+Chưa hỗ trợ đồ thị và cắt log.
