@@ -429,4 +429,13 @@ VI = {
     "Exporting {name}…": "Đang export {name}…",
     "Exported {count} frames to {name}.": "Đã export {count} frame vào {name}.",
     "Browse…": "Chọn…",
+    # Log Viewer workspace
+    "Workspace": "Workspace",
+    "Open Workspace…": "Mở workspace…",
+    "Save Workspace…": "Lưu workspace…",
+    "Workspace saved: {name}": "Đã lưu workspace: {name}",
+    "Cannot save the workspace: {error}": "Không lưu được workspace: {error}",
+    "Cannot open the workspace: {error}": "Không mở được workspace: {error}",
+    "The workspace log was not found: {path}": "Không tìm thấy log của workspace: {path}",
+    "Workspace opened; not found in this log: {signals}": "Đã mở workspace; không có trong log này: {signals}",
 }

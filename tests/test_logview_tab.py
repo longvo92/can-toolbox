@@ -253,3 +253,41 @@ def test_export_dialog_validates_and_cut_runs_in_background(tab, log_files, tmp_
     tab._cancel_load()
     wait_until(lambda: not tab.is_busy())
     assert not list(tmp_path.glob("cancel*.tmp"))
+
+
+def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, tab, log_files, tmp_path):
+    from can_toolbox.canlog.refs import SignalRef
+
+    _load(tab, log_files[0])
+    tab.filter_input.setText("engine")
+    tab.filter_input.returnPressed.emit()
+    tab.direction_input.setCurrentIndex(tab.direction_input.findData("rx"))
+    tab.time_input.setCurrentIndex(tab.time_input.findData("absolute"))
+    tab.plot_signal(SignalRef(1, 0x100, "Engine", "Gear"))
+    tab.graph.restore_cursors(0.05, 0.2, True)
+    tab.save_workspace(tmp_path / "session.json")
+    saved = tmp_path / "session.cantoolbox.json"
+    assert saved.is_file() and "Workspace saved" in tab.status.text()
+
+    settings = QSettings(str(tmp_path / "other.ini"), QSettings.Format.IniFormat)
+    with patch("can_toolbox.ui.main_window.QSettings", return_value=settings):
+        other = MainWindow()
+    try:
+        fresh = other.log_tab
+        fresh.open_workspace(saved)
+        wait_until(lambda: fresh.view is not None and not fresh.is_busy() and fresh.graph.series)
+        assert fresh.dbc_assignments == [(str(log_files[1]), 0)]
+        assert fresh.model.rowCount() == 40 and fresh.filter_input.text() == "engine"
+        assert fresh.direction_input.currentData() == "rx" and fresh.time_input.currentData() == "absolute"
+        assert [series.ref.signal for series in fresh.graph.series] == ["Gear"]
+        assert fresh.graph.cursor_time == [0.05, 0.2] and fresh.graph.measure_input.isChecked()
+
+        missing = tmp_path / "missing.cantoolbox.json"
+        missing.write_text(saved.read_text(encoding="utf-8").replace("drive.blf", "gone.blf"), encoding="utf-8")
+        fresh.open_workspace(missing)
+        assert "log was not found" in fresh.status.text()
+    finally:
+        other.log_tab.wait_for_workers()
+        other.close()
+        other.deleteLater()
+        app.processEvents()

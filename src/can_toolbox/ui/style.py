@@ -57,6 +57,20 @@ QPushButton {
 QPushButton:hover { background: #eef2fb; }
 QPushButton:pressed { background: #e0e7f7; }
 QPushButton:disabled { color: #9aa2b1; background: #f0f1f5; }
+QToolButton {
+    background: #ffffff;
+    border: 1px solid #d4d9e4;
+    border-radius: 6px;
+    padding: 7px 24px 7px 16px;
+}
+QToolButton:hover { background: #eef2fb; }
+QToolButton:pressed { background: #e0e7f7; }
+QToolButton:disabled { color: #9aa2b1; background: #f0f1f5; }
+QToolButton::menu-indicator {
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    right: 8px;
+}
 QPushButton#primaryButton {
     background: #2563eb;
     border: none;

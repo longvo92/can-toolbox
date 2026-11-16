@@ -20,7 +20,7 @@ A Windows desktop app with three tools in one window. **Log Viewer** shows BLF, 
 |---|---|
 | DBC Compare | Compare DBC files or whole baselines, pair renamed files and ECU nodes, focus on selected ECUs, review OLD/NEW values in Excel |
 | BLF → MAT | Export raw CAN frames, decode signals with DBC files, map them to model interfaces from Excel, TXT or YAML, write MAT or Simulink Datasets |
-| Log Viewer | Trace BLF, ASC and MF4 logs with per-channel DBCs, decoded signal values, ID/name filters, find, fixed-position mode and per-message cycle statistics; plot signals with synchronized measurement cursors; cut logs by time, filter and channel to BLF, ASC, MF4, CSV or MAT |
+| Log Viewer | Trace BLF, ASC and MF4 logs with per-channel DBCs, decoded signal values, ID/name filters, find, fixed-position mode and per-message cycle statistics; plot signals with synchronized measurement cursors; cut logs by time, filter and channel to BLF, ASC, MF4, CSV or MAT; save the setup as a workspace |
 | All | English or Vietnamese interface, drag & drop paths, settings remembered between sessions |
 
 ![DBC Compare tab](docs/screenshot_main.png)
