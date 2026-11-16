@@ -95,13 +95,6 @@ class DbcDatabase:
 
 
 @dataclass(frozen=True)
-class FilePair:
-    relative_path: str
-    old_path: Path | None
-    new_path: Path | None
-
-
-@dataclass(frozen=True)
 class FilePairSummary:
     dbc_file: str
     status: str  # "Matched" | "DBC Added" | "DBC Removed" | "DBC Renamed"
@@ -145,15 +138,6 @@ class EntityIdentity:
     extended: bool = False
     message_name: str = ""
     signal_name: str = ""
-
-    def display(self) -> str:
-        import json
-
-        # JSON escaping keeps identities unambiguous even for unusual path names.
-        return json.dumps([
-            self.side, self.dbc_path, self.kind, self.frame_id, self.extended,
-            self.message_name, self.signal_name,
-        ], ensure_ascii=False, separators=(",", ":"))
 
     @property
     def parent(self) -> tuple:

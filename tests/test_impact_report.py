@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 from can_toolbox.dbc_compare.pipeline import run_comparison
 from can_toolbox.dbc_compare.report.excel import write_excel_report
@@ -92,10 +92,6 @@ class ImpactReportTests(unittest.TestCase):
         workbook = self._report(self._compare(old=_database(old), new=_database(new)))
         row = _rows(workbook["Signal Details"])[0]
         self.assertEqual(row["Changed Properties"], "Start Bit: 56->57; Factor: 0->2")
-
-    def test_full_mode_cannot_drop_rows_through_change_filter(self):
-        full = self._compare()
-        self.assertIs(filter_result(full, {"Added"}), full)
 
     def test_ecu_receivers_and_identity_survive_excel_roundtrip(self):
         workbook = self._report(self._compare())

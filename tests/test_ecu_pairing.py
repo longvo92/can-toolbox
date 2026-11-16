@@ -6,8 +6,8 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
-from can_toolbox.dbc_compare.core.ecu import collect_ecu_nodes, validate_ecu_map
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs, validate_ecu_map
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
 from can_toolbox.dbc_compare.core.parser import parse_dbc
@@ -119,14 +119,13 @@ class TestEcuPairing(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "more than once"):
             DbcComparator(ecu_map={"A": "NEW", "B": "NEW"})
 
-    def test_mapping_is_copied_and_filter_retains_it(self):
+    def test_mapping_is_copied(self):
         mapping = {"OLD": "NEW"}
         comparator = DbcComparator(ecu_map=mapping)
         mapping["OLD"] = "WRONG"
         result = comparator.compare_databases("bus", _database("OLD", ()), _database("NEW", (), factor=2))
-        filtered = filter_result(result, {"Modified"})
-        self.assertEqual(filtered.ecu_map, {"OLD": "NEW"})
-        self.assertEqual(len(filtered.signal_changes), 1)
+        self.assertEqual(result.ecu_map, {"OLD": "NEW"})
+        self.assertEqual(len(result.signal_changes), 1)
 
     def test_message_rename_crosses_threshold_with_mapped_transmitter(self):
         old, new = _database("OLD", ()), _database("NEW", ())
@@ -186,10 +185,10 @@ class TestEcuDiscoveryAndFolderMappings(unittest.TestCase):
     def test_discovery_includes_declared_unused_and_routing_only_nodes(self):
         file = self._write(self.root / "bus.DBC", "TX", "RX", "UNUSED")
         self.assertEqual(parse_dbc(file).nodes, ("UNUSED",))
-        self.assertEqual(collect_ecu_nodes(file), ["RX", "TX", "UNUSED"])
+        self.assertEqual(scan_ecu_inputs(file, file)[0], ["RX", "TX", "UNUSED"])
         self._write(self.root / "nested" / "second.dbc", "EXTRA", "Vector__XXX")
         (self.root / "invalid.dbc").write_text("invalid DBC", encoding="utf-8")
-        self.assertEqual(collect_ecu_nodes(self.root), ["EXTRA", "RX", "TX", "UNUSED"])
+        self.assertEqual(scan_ecu_inputs(self.root, self.root)[0], ["EXTRA", "RX", "TX", "UNUSED"])
 
     def test_folder_mapping_is_validated_across_whole_inventory(self):
         for side, nodes in (("old", ("A", "B")), ("new", ("C", "D"))):

@@ -1,24 +1,18 @@
-"""Build distributables for CAN Toolbox.
+"""Build the standalone CAN Toolbox executable.
 
 Usage (run from anywhere, uses the project venv's Python):
-    python scripts/build.py            # build both pyz and exe
-    python scripts/build.py pyz        # thin zipapp (needs Python + deps on target)
-    python scripts/build.py exe        # standalone one-file exe (PyInstaller)
+    python scripts/build.py
 
-Outputs go to dist/:
-    CanToolbox-<version>.pyzw      # + dist/resources/ must ship next to it
-    CanToolbox-<version>.exe       # resources bundled inside, ships alone
+Output: dist/CanToolbox-<version>.exe, a one-file PyInstaller bundle with every
+dependency and resource inside; it is the only distributed artifact.
 """
 
 from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
-import zipapp
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -77,28 +71,6 @@ def _write_release_history(destination: Path) -> None:
     destination.write_text(history, encoding="utf-8")
 
 
-def build_pyz(version: str) -> Path:
-    target = DIST / f"{APP_NAME}-{version}.pyzw"
-    with tempfile.TemporaryDirectory() as tmp:
-        staging = Path(tmp) / "staging"
-        shutil.copytree(
-            SRC_PKG,
-            staging / "can_toolbox",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
-        zipapp.create_archive(
-            staging,
-            target,
-            main="can_toolbox.ui.app:main",
-            compressed=True,
-        )
-    # _resource_path() resolves to the folder containing the .pyzw,
-    # so resources/ must sit next to it.
-    shutil.copytree(RESOURCES, DIST / "resources", dirs_exist_ok=True)
-    _write_release_history(DIST / "resources" / CHANGELOG.name)
-    return target
-
-
 def build_exe(version: str) -> Path:
     python = find_python()
     check_build_env(python)
@@ -148,28 +120,13 @@ def build_exe(version: str) -> Path:
 
 
 def main() -> int:
-    targets = sys.argv[1:] or ["pyz", "exe"]
-    unknown = set(targets) - {"pyz", "exe"}
-    if unknown:
-        print(f"Unknown target(s): {', '.join(sorted(unknown))}. Use: pyz, exe", file=sys.stderr)
+    if sys.argv[1:]:
+        print("build.py takes no arguments; it builds the executable.", file=sys.stderr)
         return 2
-
-    version = read_version()
     DIST.mkdir(exist_ok=True)
-
-    built: list[Path] = []
-    if "pyz" in targets:
-        built.append(build_pyz(version))
-    if "exe" in targets:
-        built.append(build_exe(version))
-
-    print()
-    for path in built:
-        size_mb = path.stat().st_size / (1024 * 1024)
-        print(f"Built: {path.relative_to(REPO_ROOT)} ({size_mb:.1f} MB)")
-    if any(p.suffix == ".pyzw" for p in built):
-        print("Note: ship dist/resources/ alongside the .pyzw; target machine needs")
-        print("      Python >=3.11 with: pip install -r requirements.txt")
+    exe = build_exe(read_version())
+    size_mb = exe.stat().st_size / (1024 * 1024)
+    print(f"Built: {exe.relative_to(REPO_ROOT)} ({size_mb:.1f} MB)")
     return 0
 
 

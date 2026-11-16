@@ -1,7 +1,4 @@
-"""BLF to MAT / Simulink Dataset conversion engine (Qt-free).
-
-Imported from blf2mat 0.1.3 (github.com/longvo92/blf2mat @ 56fdfa9).
-"""
+"""BLF to MAT / Simulink Dataset conversion engine (Qt-free)."""
 
 from __future__ import annotations
 
@@ -14,7 +11,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -22,16 +19,14 @@ from typing import Any, Iterable
 # without importing numpy or scipy.
 np: Any = None
 savemat: Any = None
-can: Any = None
 cantools: Any = None
 yaml: Any = None
 
 
 def load_runtime_dependencies() -> None:
-    global np, savemat, can, cantools, yaml
+    global np, savemat, cantools, yaml
 
     try:
-        import can as _can
         import cantools as _cantools
         import numpy as _np
         import yaml as _yaml
@@ -40,13 +35,12 @@ def load_runtime_dependencies() -> None:
         missing = getattr(exc, "name", None) or str(exc)
         raise RuntimeError(
             f"Missing Python dependency: {missing}\n"
-            "Reinstall CAN Toolbox; the BLF converter needs python-can, cantools, numpy, "
+            "Reinstall CAN Toolbox; the BLF converter needs cantools, numba, numpy, "
             "openpyxl, scipy and PyYAML."
         ) from exc
 
     np = _np
     savemat = _savemat
-    can = _can
     cantools = _cantools
     yaml = _yaml
 
@@ -58,7 +52,6 @@ def load_runtime_dependencies() -> None:
 PREPEND_ZERO_TO_INPUT = True
 INPUT_ZERO_TIME_EPS = 1e-12
 MIN_FALLBACK_DURATION_S = 1.0
-EXCEL_HEADER_SCAN_ROWS = 20
 
 # -----------------------------------------------------------------------------
 # Utility
@@ -270,12 +263,6 @@ def parse_excel_skip_keywords(raw: dict[str, Any]) -> tuple[str, ...]:
     if any(not isinstance(keyword, str) or not keyword.strip() for keyword in keywords):
         raise RuntimeError("'excel_skip_keywords' must contain only non-empty strings.")
     return tuple(dict.fromkeys(keyword.strip().casefold() for keyword in keywords))
-
-
-def load_input_mapping_config(
-    config_path: Path | None,
-) -> tuple[list[InputCanMapping], list[InputForce]]:
-    return parse_input_mapping_config(load_mapping_config(config_path))
 
 
 def parse_input_mapping_config(
@@ -951,13 +938,6 @@ def validate_input_forces(
 # -----------------------------------------------------------------------------
 
 
-@dataclass
-class CandidateSamples:
-    candidate: DbcCandidate
-    times_abs: list[float] = field(default_factory=list)
-    values: list[float] = field(default_factory=list)
-
-
 def collapse_duplicate_times(t: Any, y: Any) -> tuple[Any, Any]:
     if len(t) <= 1:
         return t, y
@@ -1008,104 +988,57 @@ def build_decode_requests(
     return requests
 
 
+def warn_skipped_objects(info: Any) -> None:
+    """Name BLF content that MAT output cannot carry, such as markers or LIN frames."""
+    if info.skipped_objects:
+        log(f"  [INFO] Not exported (non-CAN BLF objects): {info.skipped_summary()}")
+    if info.trailing_bytes:
+        log(f"  [WARN] Ignored {info.trailing_bytes} bytes of an incomplete last BLF object")
+
+
 def decode_blf(
     blf_path: Path,
     requests: dict[str, list[DbcCandidate]],
 ) -> tuple[dict[str, dict[str, Any]], float]:
-    frame_tasks: dict[
-        tuple[int, bool],
-        dict[tuple[str, str, int, bool], dict[str, Any]],
-    ] = defaultdict(dict)
+    from can_toolbox.canlog.blf import read_blf
+    from can_toolbox.canlog.decode import MessageCodec, rows_by_message
 
-    sample_store: dict[tuple[str, tuple[str, str, int, bool, str]], CandidateSamples] = {}
-
-    for request_key, candidates in requests.items():
-        for c in candidates:
-            sample_store[(request_key, c.key)] = CandidateSamples(c)
-            frame_key = (c.frame_id, c.is_extended)
-            msg_key = (c.dbc_file, c.message_name, c.frame_id, c.is_extended)
-            if msg_key not in frame_tasks[frame_key]:
-                frame_tasks[frame_key][msg_key] = {
-                    "message": c.message_obj,
-                    "requests": [],
-                }
-            frame_tasks[frame_key][msg_key]["requests"].append((request_key, c))
-
-    first_ts: float | None = None
-    last_ts: float | None = None
-    total_frames = 0
-    decoded_frames = 0
-
-    with can.BLFReader(str(blf_path)) as reader:
-        for frame in reader:
-            total_frames += 1
-
-            ts = getattr(frame, "timestamp", None)
-            if ts is None:
-                continue
-            ts = float(ts)
-            first_ts = ts if first_ts is None else min(first_ts, ts)
-            last_ts = ts if last_ts is None else max(last_ts, ts)
-
-            if getattr(frame, "is_error_frame", False) or getattr(frame, "is_remote_frame", False):
-                continue
-
-            frame_id = int(frame.arbitration_id)
-            is_ext = bool(getattr(frame, "is_extended_id", False))
-            tasks = frame_tasks.get((frame_id, is_ext))
-            if not tasks:
-                continue
-
-            data = bytes(frame.data)
-
-            for task in tasks.values():
-                msg = task["message"]
-                try:
-                    values = msg.decode(
-                        data,
-                        decode_choices=False,
-                        scaling=True,
-                        allow_truncated=False,
-                    )
-                except Exception:
-                    continue
-
-                any_hit = False
-                for request_key, cand in task["requests"]:
-                    sig_name = cand.signal_name
-                    if sig_name not in values:
-                        continue
-                    value = values[sig_name]
-                    if not isinstance(value, (int, float, bool, np.number)):
-                        continue
-                    try:
-                        fv = float(value)
-                    except Exception:
-                        continue
-
-                    store = sample_store[(request_key, cand.key)]
-                    store.times_abs.append(ts)
-                    store.values.append(fv)
-                    any_hit = True
-
-                if any_hit:
-                    decoded_frames += 1
-
-    if first_ts is None:
+    table, info = read_blf(blf_path)
+    warn_skipped_objects(info)
+    if not len(table):
         raise RuntimeError("BLF does not contain a CAN frame with a valid timestamp.")
+    timestamps = table.timestamps()
+    first_ts = float(timestamps.min())
+    duration = max(MIN_FALLBACK_DURATION_S, float(timestamps.max()) - first_ts)
 
-    duration = max(
-        MIN_FALLBACK_DURATION_S,
-        (last_ts - first_ts) if last_ts is not None else 0.0,
-    )
+    # One codec per DBC message; it decodes every requested signal of that message at once.
+    tasks: dict[tuple[str, str, int, bool], tuple[Any, set[str]]] = {}
+    for candidates in requests.values():
+        for c in candidates:
+            msg_key = (c.dbc_file, c.message_name, c.frame_id, c.is_extended)
+            tasks.setdefault(msg_key, (c.message_obj, set()))[1].add(c.signal_name)
+
+    groups = rows_by_message(table)
+    decoded_rows: dict[tuple[str, str, int, bool], dict[str, tuple[Any, Any]]] = {}
+    hit_rows = 0
+    for msg_key, (message, names) in tasks.items():
+        codec = MessageCodec(message)
+        rows = groups.get(codec.key)
+        if rows is None:
+            decoded_rows[msg_key] = {}
+            continue
+        signals = codec.decode(table, rows, names)
+        decoded_rows[msg_key] = signals
+        if signals:
+            hit_rows += len(np.unique(np.concatenate([found for found, _ in signals.values()])))
 
     selected: dict[str, dict[str, Any]] = {}
-
     for request_key, candidates in requests.items():
         ranked = []
         for c in candidates:
-            store = sample_store[(request_key, c.key)]
-            ranked.append((len(store.times_abs), c, store))
+            msg_key = (c.dbc_file, c.message_name, c.frame_id, c.is_extended)
+            found = decoded_rows.get(msg_key, {}).get(c.signal_name)
+            ranked.append((0 if found is None else len(found[0]), c, found))
         ranked.sort(key=lambda x: x[0], reverse=True)
 
         if not ranked or ranked[0][0] == 0:
@@ -1119,10 +1052,8 @@ def decode_blf(
             }
             continue
 
-        _, candidate, store = ranked[0]
-        t = np.asarray(store.times_abs, dtype=np.float64) - first_ts
-        y = np.asarray(store.values, dtype=np.float64)
-        t, y = collapse_duplicate_times(t, y)
+        _, candidate, (rows, values) = ranked[0]
+        t, y = collapse_duplicate_times(timestamps[rows] - first_ts, np.asarray(values, dtype=np.float64))
 
         second_n = ranked[1][0] if len(ranked) > 1 else 0
         status = "DECODED"
@@ -1146,7 +1077,7 @@ def decode_blf(
             )
 
     log(
-        f"  BLF: {total_frames:,} frame(s), {decoded_frames:,} matched decode(s), "
+        f"  BLF: {len(table):,} frame(s), {hit_rows:,} matched decode(s), "
         f"duration={duration:.3f}s, requested={len(requests)} signal(s)"
     )
     return selected, duration
@@ -1309,83 +1240,10 @@ def save_raw_scenarios_mat(
     )
 
 
-def make_dataset_packager_script(
-    raw_mat: Path,
-    input_mat: Path,
-    output_mat: Path,
-    script_path: Path,
-) -> None:
-    """Generate one MATLAB helper that packages both Dataset MAT files."""
-    m = f"""
-%% AUTO-GENERATED. Package both raw scenarios in one MATLAB session.
-rawPath    = '{matlab_quote(str(raw_mat))}';
-inputPath  = '{matlab_quote(str(input_mat))}';
-outputPath = '{matlab_quote(str(output_mat))}';
-
-S = load(rawPath, 'RawInputScenario', 'RawOutputScenario');
-if ~isfield(S, 'RawInputScenario') || ~isfield(S, 'RawOutputScenario')
-    error('Raw input/output scenario variables are missing from %s', rawPath);
-end
-
-Scenario = localBuildDataset(S.RawInputScenario);
-save(inputPath, 'Scenario', '-v7.3');
-inputCount = numElements(Scenario);
-
-Scenario = localBuildDataset(S.RawOutputScenario);
-save(outputPath, 'Scenario', '-v7.3');
-outputCount = numElements(Scenario);
-
-fprintf('[PACKAGER] input=%d output=%d\\n', inputCount, outputCount);
-
-function Scenario = localBuildDataset(rawScenario)
-    Scenario = Simulink.SimulationData.Dataset;
-    Scenario.Name = 'Scenario';
-
-    interfaceNames = fieldnames(rawScenario);
-    for ii = 1:numel(interfaceNames)
-        interfaceName = interfaceNames{{ii}};
-        rawBus = rawScenario.(interfaceName);
-        busValue = struct();
-
-        elementNames = fieldnames(rawBus);
-        for ee = 1:numel(elementNames)
-            elementName = elementNames{{ee}};
-            leaf = rawBus.(elementName);
-
-            if ~isfield(leaf, 'Time') || ~isfield(leaf, 'Data')
-                error('Invalid raw leaf: %s.%s', interfaceName, elementName);
-            end
-
-            t = double(leaf.Time(:));
-            y = leaf.Data;
-            if isvector(y) && numel(y) == numel(t)
-                y = reshape(y, [], 1);
-            end
-            if size(y,1) ~= numel(t)
-                error('Time/Data size mismatch for %s.%s: Time=%d, Data rows=%d', ...
-                    interfaceName, elementName, numel(t), size(y,1));
-            end
-
-            ts = timeseries(y, t, 'Name', elementName);
-            try
-                ts.DataInfo.Interpolation = tsdata.interpolation('zoh');
-            catch
-                % Keep MATLAB default only if this metadata API differs.
-            end
-            busValue.(elementName) = ts;
-        end
-
-        Scenario = addElement(Scenario, busValue, interfaceName);
-    end
-end
-"""
-    script_path.write_text(m, encoding="utf-8")
-
-
 def make_batch_dataset_packager_script(
     jobs: list[tuple[Path, Path | None, Path | None]], script_path: Path
 ) -> None:
-    """Build all Dataset files in one MATLAB session, retaining original packager logic."""
+    """Build all Dataset files in one MATLAB session."""
     lines = ["%% AUTO-GENERATED BLF batch packager", "jobs = {"]
     for raw_mat, input_mat, output_mat in jobs:
         lines.append(
@@ -1406,7 +1264,6 @@ def make_batch_dataset_packager_script(
         "    end",
         "end",
     ]
-    # Reuse the established MATLAB localBuildDataset code verbatim.
     lines += [
         "function Scenario = localBuildDataset(rawScenario)",
         "    Scenario = Simulink.SimulationData.Dataset;",
@@ -1475,29 +1332,6 @@ def run_matlab_batch(matlab_exe: Path, script_path: Path, cwd: Path) -> None:
     for line in combined.splitlines():
         if "[PACKAGER]" in line:
             log(f"  {line.strip()}")
-
-
-def save_dataset_mats(
-    matlab_exe: Path,
-    input_mat: Path,
-    output_mat: Path,
-    input_scenario: dict[str, Any],
-    output_scenario: dict[str, Any],
-    workdir: Path,
-) -> None:
-    """Package input and output Dataset MAT files with exactly one MATLAB launch."""
-    raw_mat = workdir / "raw_scenarios.mat"
-    helper = workdir / "package_datasets.m"
-    save_raw_scenarios_mat(raw_mat, input_scenario, output_scenario)
-    make_dataset_packager_script(raw_mat, input_mat, output_mat, helper)
-    run_matlab_batch(matlab_exe, helper, cwd=workdir)
-
-    missing = [str(p) for p in (input_mat, output_mat) if not p.is_file()]
-    if missing:
-        raise RuntimeError(
-            "MATLAB completed but expected Dataset MAT file(s) were not created:\n  "
-            + "\n  ".join(missing)
-        )
 
 
 def print_side_summary(label: str, stats: SideStats) -> None:

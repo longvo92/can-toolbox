@@ -15,7 +15,7 @@ from unittest.mock import PropertyMock, patch
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
 from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, FilePairSummary
 from can_toolbox.dbc_compare.report.excel import (
     ReportExportError,
@@ -177,7 +177,7 @@ class OneSidedReportTests(unittest.TestCase):
 
 
 class ReportInputModeTests(unittest.TestCase):
-    def test_file_reports_omit_overview_with_same_or_different_names_and_filters(self):
+    def test_file_reports_omit_overview_with_same_or_different_names(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             old_folder, new_folder = root / "old", root / "new"
@@ -191,7 +191,6 @@ class ReportInputModeTests(unittest.TestCase):
                 for include_unchanged in (False, True):
                     with self.subTest(new_name=new_name, include_unchanged=include_unchanged):
                         result = DbcComparator(include_unchanged=include_unchanged).compare_paths(old, new)
-                        result = filter_result(result, {"Modified"})
                         self.assertEqual(len(result.file_pairs), 1)
                         output = write_excel_report(result, root / "files.xlsx")
                         workbook = load_workbook(output)
@@ -217,7 +216,7 @@ class ReportInputModeTests(unittest.TestCase):
             for result in results:
                 with self.subTest(status=result.file_pairs[0].status):
                     self.assertEqual(len(result.file_pairs), 1)
-                    output = write_excel_report(filter_result(result, {"Modified"}), root / "folders.xlsx")
+                    output = write_excel_report(result, root / "folders.xlsx")
                     workbook = load_workbook(output)
                     try:
                         self.assertEqual(workbook.sheetnames[:4],

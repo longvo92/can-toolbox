@@ -6,14 +6,17 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 
 | Module | Responsibility |
 |---|---|
-| `app_paths.py` | Resource lookup (source, zipapp, PyInstaller) and the folder searched for user configuration |
+| `app_paths.py` | Resource lookup (source or PyInstaller bundle) and the folder searched for user configuration |
+| `canlog/table.py` | `FrameTable`: columnar frames (time, ID, channel, DLC, flags) with one flat payload buffer |
+| `canlog/blf.py`, `reader.py` | Compiled BLF reader and `open_log` for BLF and ASC |
+| `canlog/decode.py` | `MessageCodec`: vectorized DBC signal decoding, multiplexers included |
 | `dbc_compare/core/parser.py` | Parse DBCs and reject duplicate message names, signal names and frame keys before dictionary loss |
 | `dbc_compare/core/discovery.py`, `pairing.py` | Discover DBC files and select renamed file pairs |
 | `dbc_compare/core/rename.py` | Score message and signal renames using the 0.6.7 detectors |
-| `dbc_compare/core/comparator.py`, `models.py` | Compare entities, account for known inventory, record file diagnostics and filter changes |
+| `dbc_compare/core/comparator.py`, `models.py` | Compare entities, account for known inventory and record file diagnostics |
 | `dbc_compare/report/excel.py` | Export a formatted workbook atomically |
 | `dbc_compare/pipeline.py` | `compare_inputs` and `run_comparison`: the entry points the Compare tab, tests and smoke script share |
-| `blf_mat/converter.py`, `mapping.py`, `frames.py` | Decode BLF logs, resolve DBC/Excel/TXT/YAML definitions and write MAT files or package Datasets through MATLAB |
+| `blf_mat/converter.py`, `mapping.py`, `frames.py` | Resolve DBC/Excel/TXT/YAML definitions, decode through `canlog` and write MAT files or package Datasets through MATLAB |
 | `blf_mat/options.py` | `ConversionOptions`, validation (`OptionError`), MATLAB discovery and `run_conversion` |
 | `blf_mat/checks.py` | Non-destructive environment report; never starts MATLAB |
 | `ui/main_window.py` | Shell: header, Settings/Help menus, tab widget, language propagation, close guard |
@@ -22,7 +25,7 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 
 A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/` and `blf/`. On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
 
-`tests/test_engine_is_qt_free.py` imports every engine module in a fresh interpreter and fails if PySide6, shiboken6 or tkinter is loaded. The `engine` CI job installs everything except PySide6.
+`tests/test_engine_is_qt_free.py` imports every engine module (`dbc_compare`, `blf_mat`, `canlog`) in a fresh interpreter and fails if PySide6, shiboken6 or tkinter is loaded. The `engine` CI job installs everything except PySide6.
 
 ## DBC comparison
 
@@ -32,9 +35,17 @@ The `classic-v067` pipeline matches same-relative-path files first, then conside
 
 `apply_ecu_focus(result, nodes)` filters rows after matching using the original OLD/NEW route context and one step of ECU pairing; coverage and diagnostics remain full-input. `write_excel_report(result, path, *, language="en")` localizes presentation only. `default_report_path(old, new)` places `compared_<old>_vs_<new>.xlsx` beside NEW. Export writes a sibling temporary workbook and replaces the destination only after a successful save.
 
+## CAN log engine
+
+`canlog` reads a log once into a `FrameTable` and decodes from it; the BLF converter uses it today and the log viewer will. Timestamps are integer nanoseconds from the BLF header start time, so absolute times equal python-can's. Channels are numbered from 1 as in Vector tools (0 = unknown) and `dlc` keeps the raw DLC code.
+
+`read_blf` follows python-can's `BLFReader` object layout (CAN_MESSAGE, CAN_MESSAGE2, CAN_FD_MESSAGE, CAN_FD_MESSAGE_64, CAN_ERROR_EXT) but scans decompressed containers with a Numba kernel (about 13 times faster on a synthetic 1M-frame log). Remote frames carry no payload, like python-can. Other object types (markers, app text, LIN, Ethernet) are counted in `BlfInfo.skipped_objects` and reported, never silently lost. Kernels release the GIL; Numba caches compiled code on disk from a source checkout, while the frozen exe compiles on first use. ASC goes through python-can.
+
+`MessageCodec.decode` extracts all requested signals of one message for many frames at once. It reproduces `cantools.Message.decode(..., decode_choices=False, allow_truncated=False)`: a short frame or an undefined multiplexer value drops the whole frame for that message. `tests/test_canlog.py` and `tests/test_blf_engine_equivalence.py` hold python-can, cantools and the former per-frame converter as oracles.
+
 ## BLF conversion
 
-Imported from blf2mat 0.1.3 (`github.com/longvo92/blf2mat` @ `56fdfa9`). `run_conversion(options)` validates with `build_selected_paths` and calls `converter.convert(paths, log_callback=...)`, which logs five `[n/5]` steps. numpy, scipy, python-can, cantools and PyYAML load on the first conversion so the window opens quickly.
+`run_conversion(options)` validates with `build_selected_paths` and calls `converter.convert(paths, log_callback=...)`, which logs five `[n/5]` steps. numpy, scipy, Numba, cantools and PyYAML load on the first conversion so the window opens quickly.
 
 Without definitions a BLF becomes a `Frames` struct. With a DBC, signals are decoded per message. TXT schemas, Excel sheets and YAML `input_mappings`/`input_forces` select interfaces; only signals feeding a selected interface are decoded. Each signal passes CAN decode, `status_mapping`, the AST-validated `formula` and a MATLAB-like datatype cast. Duplicate timestamps keep the last value; input signals from Excel or TXT get a zero sample at time 0. Excel sheets are read by `mapping.Workbook`, an openpyxl grid that reproduces the former pandas reader (trimmed blanks, NA texts as blank, integral floats as int). The Dataset format writes raw MAT files, generates one MATLAB script and runs `matlab -batch` once without a console window.
 
@@ -55,4 +66,4 @@ python scripts/evaluate_pairing.py --benchmark
 
 ## Build and release
 
-`python scripts/build.py` creates the Windows executable and zipapp in `dist/`. Both bundles include only dated release history for **Help → Release note**. `scripts/release_check.py` checks release metadata and changelog consistency. The release workflow tests, smoke-tests, builds and starts both artifacts from `main`; publishing requires an explicit release action.
+`python scripts/build.py` creates the one-file Windows executable in `dist/`; it is the only distributed artifact, so runtime dependencies are not size-constrained. The bundle includes only dated release history for **Help → Release note**. `scripts/release_check.py` checks release metadata and changelog consistency. The release workflow tests, smoke-tests, builds and starts the executable from `main`; publishing requires an explicit release action.
