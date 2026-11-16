@@ -52,6 +52,49 @@ def stage_compare(workdir: Path) -> None:
         print(f"compare/{name}: {result.completeness}, {result.summary()['Total Changes']} changes")
 
 
+def stage_convert(workdir: Path) -> None:
+    import can
+    from openpyxl import Workbook
+    from scipy.io import loadmat
+
+    from can_toolbox.blf_mat.options import ConversionOptions, run_conversion
+
+    root = workdir / "convert"
+    root.mkdir()
+    dbc = root / "bus.dbc"
+    dbc.write_text(
+        'VERSION ""\nNS_ :\nBS_:\nBU_: ECU\nBO_ 256 Sample: 2 ECU\n'
+        ' SG_ SpeedCAN : 0|8@1+ (1,0) [0|255] "" ECU\n SG_ RequestCAN : 8|8@1+ (1,0) [0|255] "" ECU\n',
+        encoding="ascii",
+    )
+    blf = root / "capture.blf"
+    with can.BLFWriter(blf) as writer:
+        for timestamp, data in ((10.0, [10, 2]), (10.5, [30, 3])):
+            writer.on_message_received(can.Message(timestamp=timestamp, arbitration_id=256, data=data))
+    excel = root / "interfaces.xlsx"
+    book = Workbook()
+    book.remove(book.active)
+    for sheet, interface, signal in (("SWC_INF", "Inputs", "SpeedCAN"), ("SWC_OUTF", "Outputs", "RequestCAN")):
+        rows = book.create_sheet(sheet)
+        rows.append(["Interface", "Data Element", "CAN Signal"])
+        rows.append([interface, signal.removesuffix("CAN"), signal])
+    book.save(excel)
+
+    cases = (
+        ("frames", {}, {"capture.mat": "Frames"}),
+        ("dbc", {"dbc": str(dbc)}, {"capture_signals.mat": "Scenario"}),
+        ("excel", {"dbc": str(dbc), "excel": str(excel)},
+         {"capture_input.mat": "Scenario", "capture_output.mat": "Scenario"}),
+    )
+    for name, fields, expected in cases:
+        output = root / name
+        run_conversion(ConversionOptions(blf=str(blf), output_folder=str(output), **fields), log_callback=lambda _: None)
+        for filename, variable in expected.items():
+            if variable not in loadmat(output / filename):
+                raise AssertionError(f"{name}: {filename} has no {variable}")
+        print(f"convert/{name}: {', '.join(expected)}")
+
+
 def stage_gui(_workdir: Path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -75,10 +118,14 @@ def stage_gui(_workdir: Path) -> None:
         app.processEvents()
 
 
-STAGES: dict[str, Callable[[Path], None]] = {"compare": stage_compare}
+STAGES: dict[str, Callable[[Path], None]] = {"compare": stage_compare, "convert": stage_convert}
 
 
 def main() -> int:
+    # Windows consoles often use cp1252; tab titles such as "BLF → MAT" must not crash the run.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--stage", choices=sorted(STAGES), action="append", help="Run only these stages")
     parser.add_argument("--gui", action="store_true", help="Also open the main window offscreen")
