@@ -1,6 +1,6 @@
 # CAN Toolbox
 
-GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log viewer (BLF/ASC/MF4 trace and signal graphics; log cutting planned; no simulation), DBC file/baseline comparison into an Excel change report, and BLF to MATLAB MAT/Simulink Dataset conversion.
+GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log viewer (BLF/ASC/MF4 trace, signal graphics and log cutting; no simulation), DBC file/baseline comparison into an Excel change report, and BLF to MATLAB MAT/Simulink Dataset conversion.
 
 ## Layout
 - `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (converter, Excel/TXT/YAML mapping, `options.py` validation), `ui/` (shell `main_window.py`, `compare_tab.py`, `blf_tab.py`, `logview_tab.py`, `graphics.py`, `widgets.py`, `style.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.

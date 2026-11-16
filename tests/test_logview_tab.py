@@ -211,3 +211,45 @@ def test_graph_plots_signals_and_syncs_cursor_with_trace(tab, log_files):
     wait_until(lambda: not tab.is_busy() and tab.graph.series and tab.graph.series[0].ref.signal == "Gear")
     tab.graph.clear()
     assert not tab.graph.series and tab.graph.placeholder.isVisibleTo(tab.graph)
+
+
+def test_export_dialog_validates_and_cut_runs_in_background(tab, log_files, tmp_path):
+    from can_toolbox.canlog import open_log
+    from can_toolbox.ui.logview_tab import ExportDialog
+
+    _load(tab, log_files[0])
+    tab.filter_input.setText("engine")
+    tab.filter_input.returnPressed.emit()
+    dialog = ExportDialog(tab, tab._binder, duration=0.4, cursors=(0.3, 0.1), filtered_count=40, total_count=81,
+                          default_path=str(tmp_path / "cut.blf"))
+    assert dialog.between.isChecked() and dialog.filtered_input.isChecked()
+    request, path = dialog.build()
+    assert (request.start_s, request.end_s, request.filtered) == (0.1, 0.3, True)
+
+    dialog.custom.setChecked(True)
+    dialog.start_input.setText("0.2")
+    dialog.end_input.setText("0.1")
+    with pytest.raises(ValueError, match="before its start"):
+        dialog.build()
+    dialog.end_input.setText("0.25")
+    dialog.channel_map_input.setText("1=5")
+    dialog.time_input.setCurrentIndex(1)
+    dialog.path_input.setText(str(tmp_path / "cut.txt"))
+    with pytest.raises(ValueError, match="ending in"):
+        dialog.build()
+    dialog.path_input.setText(str(tmp_path / "cut.asc"))
+    request, path = dialog.build()
+    dialog.deleteLater()
+
+    tab.start_export(request, path)
+    wait_until(lambda: "Exported" in tab.status.text())
+    assert tab.last_export.frames == 6  # Engine frames at 0.20 ... 0.25 s
+    frames = open_log(path).frames
+    assert set(frames.channel.tolist()) == {5}
+    assert frames.arbitration_id.tolist() == [0x100] * 6
+    assert frames.seconds()[0] == pytest.approx(0.0, abs=1e-6)
+
+    tab.start_export(request, tmp_path / "cancel.blf")
+    tab._cancel_load()
+    wait_until(lambda: not tab.is_busy())
+    assert not list(tmp_path.glob("cancel*.tmp"))

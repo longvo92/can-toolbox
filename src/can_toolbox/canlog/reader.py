@@ -115,7 +115,9 @@ def read_with_python_can(
     total = max(path.stat().st_size, 1)
 
     def messages():
-        with can.LogReader(str(path)) as reader:
+        # ASC: absolute times from the file's "date" line, like CANoe shows them.
+        options = {"relative_timestamp": False} if path.suffix.lower() == ".asc" else {}
+        with can.LogReader(str(path), **options) as reader:
             for index, message in enumerate(reader):
                 if index % 50000 == 0:
                     if cancel is not None and cancel():
