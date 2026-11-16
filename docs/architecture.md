@@ -10,6 +10,7 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 | `canlog/table.py` | `FrameTable`: columnar frames (time, ID, channel, DLC, flags) with one flat payload buffer |
 | `canlog/blf.py`, `reader.py` | Compiled BLF reader and `open_log` for BLF and ASC |
 | `canlog/decode.py` | `MessageCodec`: vectorized DBC signal decoding, multiplexers included |
+| `canlog/database.py`, `view.py` | Per-channel DBC lookup and single-frame display decode; `LogView`: time order, filters, find, fixed-position rows and statistics |
 | `dbc_compare/core/parser.py` | Parse DBCs and reject duplicate message names, signal names and frame keys before dictionary loss |
 | `dbc_compare/core/discovery.py`, `pairing.py` | Discover DBC files and select renamed file pairs |
 | `dbc_compare/core/rename.py` | Score message and signal renames using the 0.6.7 detectors |
@@ -20,10 +21,10 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 | `blf_mat/options.py` | `ConversionOptions`, validation (`OptionError`), MATLAB discovery and `run_conversion` |
 | `blf_mat/checks.py` | Non-destructive environment report; never starts MATLAB |
 | `ui/main_window.py` | Shell: header, Settings/Help menus, tab widget, language propagation, close guard |
-| `ui/compare_tab.py`, `ui/blf_tab.py` | One tab per tool with its own cards, workers, progress, status and log |
+| `ui/compare_tab.py`, `ui/blf_tab.py`, `ui/logview_tab.py` | One tab per tool with its own workers, progress and status; the viewer's `TraceModel` formats only painted cells |
 | `ui/widgets.py`, `ui/style.py`, `ui/app.py` | Shared widgets and text binding, theme, entry point |
 
-A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/` and `blf/`. On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
+A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/`, `blf/` and `logview/` (last log, DBC assignments as JSON). On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
 
 `tests/test_engine_is_qt_free.py` imports every engine module (`dbc_compare`, `blf_mat`, `canlog`) in a fresh interpreter and fails if PySide6, shiboken6 or tkinter is loaded. The `engine` CI job installs everything except PySide6.
 
@@ -42,6 +43,10 @@ The `classic-v067` pipeline matches same-relative-path files first, then conside
 `read_blf` follows python-can's `BLFReader` object layout (CAN_MESSAGE, CAN_MESSAGE2, CAN_FD_MESSAGE, CAN_FD_MESSAGE_64, CAN_ERROR_EXT) but scans decompressed containers with a Numba kernel (about 13 times faster on a synthetic 1M-frame log). Remote frames carry no payload, like python-can. Other object types (markers, app text, LIN, Ethernet) are counted in `BlfInfo.skipped_objects` and reported, never silently lost. Kernels release the GIL; Numba caches compiled code on disk from a source checkout, while the frozen exe compiles on first use. ASC goes through python-can.
 
 `MessageCodec.decode` extracts all requested signals of one message for many frames at once. It reproduces `cantools.Message.decode(..., decode_choices=False, allow_truncated=False)`: a short frame or an undefined multiplexer value drops the whole frame for that message. `tests/test_canlog.py` and `tests/test_blf_engine_equivalence.py` hold python-can, cantools and the former per-frame converter as oracles.
+
+## Log viewer
+
+`LogViewerTab` reads a log on a `Task` thread (`load_view`: `open_log`, stable time sort, `LogDatabase.load`) with progress and cooperative cancel, then hands a `LogView` to `TraceModel`. Filters and fixed-position mode only swap the row index array; nothing is copied per frame. A DBC assigned to a channel wins over one assigned to all channels, then assignment order. Statistics run on a second `Task` when their tab is shown. ASC and MF4 go through python-can (MF4 needs asammdf); BLF uses the Numba reader. Tests that wait on these threads must release the GIL (`time.sleep`), because `QTest.qWait` holds it and starves imports and JIT compilation on the worker.
 
 ## BLF conversion
 

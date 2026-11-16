@@ -1,13 +1,13 @@
 # CAN Toolbox
 
-GUI-only Windows desktop app shipped as one PyInstaller exe: compare CAN DBC files or baseline folders into an Excel change report, and convert CAN BLF logs to MATLAB MAT files or Simulink Datasets. A CANoe-style log viewer (trace, graphics, cut; no simulation) is being built on the `canlog` engine.
+GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log viewer (BLF/ASC/MF4 trace now; graphics and log cutting planned; no simulation), DBC file/baseline comparison into an Excel change report, and BLF to MATLAB MAT/Simulink Dataset conversion.
 
 ## Layout
-- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (converter, Excel/TXT/YAML mapping, `options.py` validation), `ui/` (shell `main_window.py`, `compare_tab.py`, `blf_tab.py`, `widgets.py`, `style.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
+- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (converter, Excel/TXT/YAML mapping, `options.py` validation), `ui/` (shell `main_window.py`, `compare_tab.py`, `blf_tab.py`, `logview_tab.py`, `widgets.py`, `style.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
 - `scripts/` (`build.py`, `release_check.py`, `smoke.py`, `evaluate_pairing.py`), `examples/` (DBC baselines, `blf/` mapping samples), `resources/help/`, `tests/`; Windows launcher `run_gui.bat`.
 
 ## Runtime
-- Python >=3.11; PySide6, cantools, openpyxl, numba, numpy, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
+- Python >=3.11; PySide6, asammdf, cantools, openpyxl, numba, numpy, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
 - Distributed only as the exe: add runtime libraries freely when they help; no pyzw/zipapp or CLI builds.
 
 ## Commands

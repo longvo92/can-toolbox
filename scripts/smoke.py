@@ -95,6 +95,37 @@ def stage_convert(workdir: Path) -> None:
         print(f"convert/{name}: {', '.join(expected)}")
 
 
+def stage_logview(workdir: Path) -> None:
+    import can
+
+    from can_toolbox.canlog import open_log
+    from can_toolbox.canlog.database import DbcAssignment, LogDatabase
+    from can_toolbox.canlog.view import FrameFilter, FrameQuery, LogView
+
+    root = workdir / "logview"
+    root.mkdir()
+    dbc = root / "bus.dbc"
+    dbc.write_text(
+        'VERSION ""\nNS_ :\nBS_:\nBU_: ECU\nBO_ 256 Sample: 2 ECU\n SG_ Speed : 0|8@1+ (1,0) [0|255] "" ECU\n',
+        encoding="ascii",
+    )
+    for suffix, writer_type in ((".blf", can.BLFWriter), (".asc", can.ASCWriter), (".mf4", can.MF4Writer)):
+        path = root / f"capture{suffix}"
+        with writer_type(str(path)) as writer:
+            for index in range(20):
+                arbitration_id = 256 if index % 2 else 0x18FF0001
+                writer.on_message_received(can.Message(
+                    timestamp=1_700_000_000 + index * 0.01, arbitration_id=arbitration_id,
+                    is_extended_id=arbitration_id > 0x7FF, data=bytes([index, 0]),
+                ))
+        view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc)]))
+        rows = view.apply(FrameFilter(FrameQuery.parse("sample")))
+        stats = view.statistics()
+        if len(view.frames) != 20 or len(rows) != 10 or len(stats) != 1 or stats[0].count != 10:
+            raise AssertionError(f"{path.name}: {len(view.frames)} frames, {len(rows)} filtered, {stats}")
+        print(f"logview/{suffix[1:]}: {len(view.frames)} frames, {len(rows)} Sample")
+
+
 def stage_gui(_workdir: Path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -118,7 +149,9 @@ def stage_gui(_workdir: Path) -> None:
         app.processEvents()
 
 
-STAGES: dict[str, Callable[[Path], None]] = {"compare": stage_compare, "convert": stage_convert}
+STAGES: dict[str, Callable[[Path], None]] = {
+    "compare": stage_compare, "convert": stage_convert, "logview": stage_logview,
+}
 
 
 def main() -> int:

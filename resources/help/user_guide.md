@@ -1,6 +1,6 @@
 # User Guide
 
-CAN Toolbox has two tabs. Open **Settings → Language…** to switch between English and Tiếng Việt.
+CAN Toolbox has three tabs. Open **Settings → Language…** to switch between English and Tiếng Việt.
 
 ## DBC Compare
 
@@ -57,3 +57,15 @@ Matching has synthetic regression coverage; no production corpus with labeled ma
 | With TXT, Excel or YAML | `<log>_input.mat` and/or `<log>_output.mat` |
 
 Signals keep their CAN timestamps relative to the first frame; nothing is resampled. Integer datatypes round and saturate like MATLAB. Existing files with the same name are overwritten.
+
+## Log Viewer
+
+1. Click **Open Log…** or drop a `.blf`, `.asc` or `.mf4` file on the tab. Large logs load in the background; **Cancel** stops reading.
+2. Click **DBC Files…** to add databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the tab adds them for all channels.
+3. The trace lists every frame: time, channel, ID (extended IDs end in `x`, as in CANoe), message name, direction, type, DLC and data. Error frames are red.
+4. Select a frame to see its decoded signals: physical value or value-table text, raw value and unit.
+5. **Filter** accepts IDs, ranges and name fragments, for example `100, 200-2FF, 18FF00x, Engine`; press Enter to apply. **Channel**, **Direction** and **Errors** narrow the trace further.
+6. **Mode → Fixed position** shows only the newest frame per channel and ID. **Time → Absolute** shows wall-clock time when the log records its start.
+7. **Find** jumps to the next or previous frame matching an ID or name. **Statistics** lists counts and cycle times per message; **Log Info** shows the file, start time, DBCs and anything the reader skipped, such as BLF markers or LIN objects.
+
+Graphics and cutting logs are not available yet.

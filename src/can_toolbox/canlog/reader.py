@@ -19,7 +19,7 @@ from can_toolbox.canlog.table import (
     FrameTable,
 )
 
-SUPPORTED_SUFFIXES = (".blf", ".asc")
+SUPPORTED_SUFFIXES = (".blf", ".asc", ".mf4")
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,10 @@ def open_log(
         if info.trailing_bytes:
             warnings.append(f"Ignored {info.trailing_bytes} bytes of an incomplete last object")
         return LogFile(path, frames, "BLF", tuple(warnings))
-    if suffix == ".asc":
-        return LogFile(path, read_with_python_can(path, progress=progress, cancel=cancel), "ASC")
+    if suffix in (".asc", ".mf4"):
+        # python-can parses ASC text and ASAM MDF4 bus logging (through asammdf).
+        frames = read_with_python_can(path, progress=progress, cancel=cancel)
+        return LogFile(path, frames, suffix[1:].upper())
     raise ValueError(f"Unsupported log format {path.suffix!r}; expected one of {', '.join(SUPPORTED_SUFFIXES)}")
 
 

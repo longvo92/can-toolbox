@@ -56,7 +56,7 @@ def wait_until(condition, timeout=20):
 
 def test_window_has_both_tools_and_switches_subtitle(window):
     titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
-    assert titles == ["DBC Compare", "BLF → MAT"]
+    assert titles == ["DBC Compare", "BLF → MAT", "Log Viewer"]
     assert window.subtitle.text().startswith("Convert CAN BLF logs")
     window.tabs.setCurrentWidget(window.compare_tab)
     assert window.subtitle.text().startswith("Compare DBC baselines")

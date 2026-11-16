@@ -26,6 +26,21 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 DIST = REPO_ROOT / "dist"
 APP_NAME = "CanToolbox"
 _ADD_DATA_SEP = ";" if sys.platform == "win32" else ":"
+# Reachable only through optional code paths the app never takes (asammdf's own
+# viewer, Qt Quick/WebEngine); bundling them would add hundreds of megabytes.
+_EXCLUDED_MODULES = (
+    "asammdf.gui",
+    "asammdf.app",
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineWidgets",
+    "PySide6.QtWebEngineQuick",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuickWidgets",
+    "PySide6.Qt3DCore",
+    "matplotlib",
+    "IPython",
+)
 
 
 def find_python() -> str:
@@ -102,6 +117,7 @@ def build_exe(version: str) -> Path:
         str(build_dir / "work"),
         "--specpath",
         str(build_dir),
+        *(argument for module in _EXCLUDED_MODULES for argument in ("--exclude-module", module)),
         str(SRC_PKG / "__main__.py"),
     ]
     env = os.environ.copy()

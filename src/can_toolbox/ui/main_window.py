@@ -25,6 +25,7 @@ from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.ui.blf_tab import BlfTab
 from can_toolbox.ui.compare_tab import CompareTab
+from can_toolbox.ui.logview_tab import LogViewerTab
 from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons
 
 
@@ -70,7 +71,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("CAN Toolbox")
-        self.resize(1000, 780)
+        self.resize(1180, 820)
         self.setMinimumSize(720, 520)
         self._settings = QSettings("CanToolbox", "CANToolbox")
         migrate_legacy_settings(self._settings, _legacy_settings())
@@ -85,7 +86,10 @@ class MainWindow(QMainWindow):
         self.blf_tab = BlfTab(
             self._settings, gui_language=self._gui_language, report_language=self._report_language,
         )
-        self.tool_tabs: tuple[QWidget, ...] = (self.compare_tab, self.blf_tab)
+        self.log_tab = LogViewerTab(
+            self._settings, gui_language=self._gui_language, report_language=self._report_language,
+        )
+        self.tool_tabs: tuple[QWidget, ...] = (self.compare_tab, self.blf_tab, self.log_tab)
 
         self._build_menu()
         self._build_layout()

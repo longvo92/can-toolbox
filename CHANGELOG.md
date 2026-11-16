@@ -10,6 +10,10 @@ for the procedure.
 
 ## [Unreleased]
 
+### Added
+
+- **Log Viewer** tab: open BLF, ASC or MF4 logs as a CANoe-style trace with per-channel DBCs, decoded signal values, ID/range/name filters, find, fixed-position mode, absolute or relative time and per-message statistics.
+
 ### Changed
 
 - **BLF → MAT** reads and decodes logs many times faster; output files are unchanged.
