@@ -6,8 +6,8 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
-from dbc_compare_tool.core.models import Message, Signal
-from dbc_compare_tool.core.rename import (
+from can_toolbox.dbc_compare.core.models import Message, Signal
+from can_toolbox.dbc_compare.core.rename import (
     EventMessageDetector,
     MessageRenameDetector,
     RenameMatch,
@@ -50,7 +50,7 @@ class TestSignalRenameDetector(unittest.TestCase):
     def test_no_eligible_candidates_skips_assignment(self):
         old = [_make_signal(f"Old{i}", start_bit=i * 8) for i in range(64)]
         new = [_make_signal(f"New{i}", start_bit=4096 + i * 16, length=16) for i in range(64)]
-        with patch("dbc_compare_tool.core.rename._maximum_assignment") as assignment:
+        with patch("can_toolbox.dbc_compare.core.rename._maximum_assignment") as assignment:
             self.assertEqual(self.detector.match(old, new), [])
             assignment.assert_not_called()
 

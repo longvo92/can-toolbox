@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-from contextlib import redirect_stderr, redirect_stdout
+import unittest
 from dataclasses import replace
-from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.focus import apply_ecu_focus
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs
+from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.pipeline import compare_inputs, run_comparison
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 def signal(name, start, *receivers):
@@ -160,25 +159,23 @@ class EcuFocusTests(unittest.TestCase):
             finally:
                 workbook.close()
 
-    def test_cli_list_and_vietnamese_focus_report(self):
+    def test_node_scan_and_vietnamese_focus_report(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             old, new = root / "Baseline cũ.dbc", root / "Baseline mới.dbc"
             old.write_text(DBC, encoding="utf-8")
             new.write_text(DBC.replace("(1,0)", "(2,0)"), encoding="utf-8")
-            args = ["--old", str(old), "--new", str(new)]
-            output = StringIO()
-            with redirect_stdout(output), redirect_stderr(StringIO()):
-                self.assertEqual(main([*args, "--list-ecus"]), 0)
-            self.assertIn("SomeoneElse", output.getvalue())
-            self.assertIn("Spare", output.getvalue())
-            self.assertNotIn("Vector__XXX", output.getvalue())
+            old_nodes, new_nodes, diagnostics = scan_ecu_inputs(old, new)
+            listed = {*old_nodes, *new_nodes}
+            self.assertIn("SomeoneElse", listed)
+            self.assertIn("Spare", listed)
+            self.assertNotIn("Vector__XXX", listed)
+            self.assertEqual(diagnostics, [])
             self.assertEqual(list(root.glob("*.xlsx")), [])
-            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                self.assertEqual(main([*args, "--ecu-focus", "missing"]), 2)
-                self.assertEqual(main([*args, "--ecu-focus", "Rx", "--ecu-focus", "Spare",
-                                       "--report-language", "vi"]), 0)
-            output_path = root / "compared_Baseline cũ_vs_Baseline mới.xlsx"
+            with self.assertRaises(ValueError):
+                compare_inputs(old, new, focus_nodes={"missing"})
+            _, output_path = run_comparison(old, new, focus_nodes=["Rx", "Spare"], language="vi")
+            self.assertEqual(output_path, root / "compared_Baseline cũ_vs_Baseline mới.xlsx")
             workbook = load_workbook(output_path)
             try:
                 self.assertEqual(workbook.sheetnames, ["Tổng quan", "Chi tiết message", "Chi tiết signal"])

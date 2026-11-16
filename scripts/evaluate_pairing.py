@@ -8,8 +8,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 def _dbc(messages: int, changed: bool) -> str:

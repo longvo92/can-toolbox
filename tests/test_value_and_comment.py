@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator
-from dbc_compare_tool.core.parser import parse_dbc
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.parser import parse_dbc
 
 _OLD_DBC = """VERSION ""
 

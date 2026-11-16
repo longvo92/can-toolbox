@@ -9,10 +9,10 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.models import DbcDatabase, Message, Signal
-from dbc_compare_tool.report.excel import write_excel_report
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from can_toolbox.dbc_compare.pipeline import run_comparison
+from can_toolbox.dbc_compare.report.excel import write_excel_report
 
 
 def _signal(name: str, start: int = 0, receivers: tuple[str, ...] = ("ECM",)) -> Signal:
@@ -272,15 +272,15 @@ class ImpactReportTests(unittest.TestCase):
         self.assertEqual(auto.file_pairs[0].status, "DBC Renamed")
         self.assertEqual(manual.file_pairs[0].status, "Manually Paired")
 
-    def test_cli_full_mode_and_parse_error_coverage_are_recorded(self):
+    def test_pipeline_full_mode_and_parse_error_coverage_are_recorded(self):
         old, new = self.root / "old", self.root / "new"
         old.mkdir()
         new.mkdir()
         for folder in (old, new):
             (folder / "bus.dbc").write_text(_DBC, encoding="utf-8")
             (folder / "bad.dbc").write_text("invalid dbc {{{", encoding="utf-8")
-        output = self.root / "full.xlsx"
-        self.assertEqual(main(["--old", str(old), "--new", str(new), "--out", str(output), "--include-unchanged"]), 3)
+        result, output = run_comparison(old, new, self.root / "full.xlsx", include_unchanged=True)
+        self.assertEqual(result.completeness, "Incomplete")
         workbook = load_workbook(output)
         self.addCleanup(workbook.close)
         summary = dict(workbook["Summary"].iter_rows(min_row=4, values_only=True))

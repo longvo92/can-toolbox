@@ -10,6 +10,29 @@ for the procedure.
 
 ## [Unreleased]
 
+DBC Compare Tool becomes **CAN Toolbox** (planned as 1.0.0) and absorbs the BLF to MAT converter (blf2mat 0.1.3).
+
+### Added
+
+- **BLF → MAT** tab: convert BLF files or folders to MAT files or Simulink Datasets, with optional DBC, Excel, TXT and YAML definitions, a sheet picker, MATLAB detection and an environment check.
+- The interface and help are available in English and Vietnamese for both tools.
+
+### Changed
+
+- One window with **DBC Compare** and **BLF → MAT** tabs. The app, download and repository are renamed CAN Toolbox.
+- Python 3.11 or newer is required to run from source; all dependencies, including PySide6, install with the app.
+- The BLF converter reads Excel mappings without pandas, which keeps the download smaller.
+- MATLAB no longer opens a console window while packaging Datasets.
+
+### Removed
+
+- The command line: `dbc-compare-tool`, `run_cli.bat` and the `blf-to-mat` command. Keep DBC Compare Tool 0.8.0 for scripted comparisons, or call `can_toolbox.dbc_compare.pipeline.run_comparison` and `can_toolbox.blf_mat.options.run_conversion` from Python.
+
+### Migration
+
+- Python imports move from `dbc_compare_tool.core` / `.report` to `can_toolbox.dbc_compare.core` / `.report`, and from `blf_to_mat` to `can_toolbox.blf_mat`.
+- Saved DBC Compare paths and language choices are copied from DBC Compare Tool on first start. `signal_mapping.yaml` is loaded from beside the app instead of beside the `.pyz` archive.
+
 ## [0.8.0] - 2026-11-06
 
 ### Added

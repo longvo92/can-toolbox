@@ -3,8 +3,8 @@
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator, filter_result
-from dbc_compare_tool.core.models import ComparisonResult
+from can_toolbox.dbc_compare.core.comparator import DbcComparator, filter_result
+from can_toolbox.dbc_compare.core.models import ComparisonResult
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 _OLD_FOLDER = _EXAMPLES / "old"

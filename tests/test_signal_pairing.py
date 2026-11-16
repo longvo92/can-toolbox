@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
-import io
 import tempfile
 import unittest
 from pathlib import Path
 
 from openpyxl import load_workbook
 
-from dbc_compare_tool.cli import main
-from dbc_compare_tool.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.pipeline import run_comparison
 
 
 def shifted_dbc(event_like: bool) -> tuple[str, str, dict[str, str]]:
@@ -73,14 +71,12 @@ class TestShiftedSignalPairing(unittest.TestCase):
                         self.assertEqual(sum(change.change_type == "Unchanged" for change in result.signal_changes),
                                          int(include_unchanged))
 
-    def test_cli_exports_review_confidence_and_start_bit_changes(self):
+    def test_pipeline_exports_review_confidence_and_start_bit_changes(self):
         for event_like in (False, True):
             with self.subTest(event_like=event_like):
                 pairs = self._inputs(event_like)
-                report = self.root / "report.xlsx"
-                with contextlib.redirect_stdout(io.StringIO()):
-                    status = main(["--old", str(self.old), "--new", str(self.new), "--out", str(report)])
-                self.assertEqual(status, 0)
+                result, report = run_comparison(self.old, self.new, self.root / "report.xlsx")
+                self.assertEqual(result.completeness, "Complete")
                 workbook = load_workbook(report)
                 try:
                     values = list(workbook["Signal Details"].values)

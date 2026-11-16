@@ -1,6 +1,8 @@
 # Hướng dẫn sử dụng
 
-## GUI
+CAN Toolbox có hai tab. Mở **Cài đặt → Ngôn ngữ…** để đổi giữa English và Tiếng Việt.
+
+## So sánh DBC
 
 1. Chọn chế độ **File** hoặc **Folder**, rồi chọn hai baseline OLD và NEW.
 2. Mở **Cài đặt → Ngôn ngữ…** để chọn **Ngôn ngữ GUI** và **Ngôn ngữ report**. Report mặc định theo GUI.
@@ -10,7 +12,7 @@
 6. Report gồm tất cả loại thay đổi trong phạm vi ECU hiện tại. Bật **Gồm mục không đổi** để xuất thêm các message và signal không đổi.
 7. Chọn **Chạy so sánh** rồi **Mở report**.
 
-## ECU focus và report
+### ECU focus và report
 
 - Tool xét route ở cả OLD và NEW để thấy cả trường hợp ECU có thêm hoặc mất Tx/Rx. Với Tx, focus gồm mọi signal do ECU phát. Với Rx, focus chỉ gồm từng signal ECU nhận, cùng các thay đổi cấp message liên quan.
 - Chọn một đầu của cặp ECU đã đổi tên sẽ gồm đầu tương ứng ở baseline còn lại. Node cùng tên được áp dụng trên mọi DBC đã chọn.
@@ -18,22 +20,21 @@
 - **Chưa đầy đủ** nghĩa là có file không đọc được. Kiểm tra lỗi trong sheet **Tổng quan** hoặc log. So sánh trực tiếp hai file dừng nếu một file lỗi.
 - Lọc sheet chi tiết theo loại thay đổi, CAN ID hoặc ECU Tx/Rx. **Thuộc tính thay đổi** hiển thị giá trị cũ và mới, ví dụ `Start Bit: 56->57`. Đóng file Excel trước khi xuất lại cùng đường dẫn.
 
-## CLI
+## BLF → MAT
 
-```powershell
-.\run_cli.bat --old "folder cũ" --new "folder mới" --list-ecus
-.\run_cli.bat --old "folder cũ" --new "folder mới" --ecu-focus BCM --ecu-focus ECM --report-language vi
-```
+1. Chọn **File / thư mục BLF**. Chọn thư mục sẽ lấy mọi file `.blf` bên trong, kể cả thư mục con.
+2. Tùy chọn: thêm định nghĩa signal. Nếu không có, tool xuất CAN frame thô.
+   - **File / thư mục DBC** để decode signal; mỗi message thành một nhóm signal.
+   - **TXT schema input** và **TXT schema output** gồm các dòng `Interface.Element : datatype`; element khớp theo tên signal DBC.
+   - **Workbook Excel** map element của model sang CAN signal. **Chọn sheet…** để chọn sheet input/output; cột và dòng header được tự nhận diện nếu bạn để trống (nhập tên header hoặc số thứ tự bắt đầu từ 1).
+   - **Config YAML** thêm `input_mappings` (CAN signal, `status_mapping`, `formula` như `/10`), `input_forces` (giá trị input cố định) và `excel_skip_keywords`. Khi để trống, tool dùng `signal_mapping.yaml` cạnh ứng dụng nếu có. Xem mẫu trong thư mục `examples/blf` của repository.
+3. Chọn **Định dạng output**. **File MAT** không cần MATLAB. **Simulink Dataset** chạy MATLAB một lần để đóng gói mọi log; để trống **File chạy MATLAB** để tool tự tìm.
+4. Bấm **Chuyển đổi**, rồi **Mở thư mục output**. **Kiểm tra môi trường** liệt kê các package Python và MATLAB sẽ được dùng.
 
-| Tùy chọn | Cách dùng |
+| Input | File trong thư mục output (mặc định `mat_output`) |
 |---|---|
-| `--old PATH`, `--new PATH` | Hai folder hoặc hai file DBC. Đặt đường dẫn có khoảng trắng trong dấu ngoặc kép. |
-| `--out PATH` | Đường dẫn report `.xlsx` tự chọn. |
-| `--list-ecus` | Quét và liệt kê node OLD/NEW, không xuất report. |
-| `--ecu-focus NODE` | Lọc theo Tx/Rx. Lặp lại để chọn nhiều node. |
-| `--ecu-pair OLD=NEW` | Ghép cặp node đổi tên. Có thể lặp lại. |
-| `--include-unchanged` | Xuất cả mục không đổi trong phạm vi đã chọn. |
-| `--report-language {en,vi}` | Chọn ngôn ngữ report. CLI mặc định English. |
-| `--help` | Xem trợ giúp lệnh. |
+| Chỉ BLF | `<log>.mat` với struct `Frames`: thời gian, ID, data, DLC và các cờ frame |
+| BLF + DBC | `<log>_signals.mat` |
+| Có TXT, Excel hoặc YAML | `<log>_input.mat` và/hoặc `<log>_output.mat` |
 
-Mã thoát: **0** hoàn tất, **1** lỗi đọc file trực tiếp hoặc lỗi xử lý/xuất, **2** input hoặc mapping không hợp lệ, **3** đã xuất report hoặc quét ECU nhưng có file DBC bị bỏ qua.
+Signal giữ timestamp CAN tính từ frame đầu tiên; tool không resample. Datatype số nguyên được làm tròn và bão hòa như MATLAB. File trùng tên sẽ bị ghi đè.

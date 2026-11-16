@@ -1,4 +1,10 @@
-cantools>=40.3.0
-openpyxl>=3.1.0
+# Runtime dependencies mirror pyproject.toml; build and test tools follow.
 PySide6>=6.7.0
+cantools>=40.3.0,<42
+openpyxl>=3.1,<4
+numpy>=1.26,<3
+scipy>=1.12,<2
+python-can>=4.4,<5
+PyYAML>=6,<7
 pyinstaller>=6.0.0
+pytest>=8,<10

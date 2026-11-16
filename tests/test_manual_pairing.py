@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbc_compare_tool.core.comparator import DbcComparator
+from can_toolbox.dbc_compare.core.comparator import DbcComparator
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 _OLD_FOLDER = _EXAMPLES / "old"

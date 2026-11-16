@@ -1,4 +1,4 @@
-"""Build distributables for dbc-compare-tool.
+"""Build distributables for CAN Toolbox.
 
 Usage (run from anywhere, uses the project venv's Python):
     python scripts/build.py            # build both pyz and exe
@@ -6,8 +6,8 @@ Usage (run from anywhere, uses the project venv's Python):
     python scripts/build.py exe        # standalone one-file exe (PyInstaller)
 
 Outputs go to dist/:
-    DbcCompareTool-<version>.pyzw      # + dist/resources/ must ship next to it
-    DbcCompareTool-<version>.exe       # resources bundled inside, ships alone
+    CanToolbox-<version>.pyzw      # + dist/resources/ must ship next to it
+    CanToolbox-<version>.exe       # resources bundled inside, ships alone
 """
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
-from dbc_compare_tool.release_notes import published_release_notes  # noqa: E402
+from can_toolbox.release_notes import published_release_notes  # noqa: E402
 
-SRC_PKG = REPO_ROOT / "src" / "dbc_compare_tool"
+SRC_PKG = REPO_ROOT / "src" / "can_toolbox"
 RESOURCES = REPO_ROOT / "resources"
 # Keep development notes in the repository and bundle only the release history.
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 DIST = REPO_ROOT / "dist"
-APP_NAME = "DbcCompareTool"
+APP_NAME = "CanToolbox"
 _ADD_DATA_SEP = ";" if sys.platform == "win32" else ":"
 
 
@@ -58,7 +58,7 @@ def check_build_env(python: str) -> None:
             f"{probe.stderr.strip()}\n"
             "Fix: create the project venv and install deps:\n"
             "    python -m venv .venv\n"
-            '    .venv\\Scripts\\pip install -e ".[gui]" pyinstaller',
+            '    .venv\\Scripts\\pip install -e ".[dev]"',
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -68,7 +68,7 @@ def read_version() -> str:
     text = (SRC_PKG / "__init__.py").read_text(encoding="utf-8")
     match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if not match:
-        raise RuntimeError("__version__ not found in src/dbc_compare_tool/__init__.py")
+        raise RuntimeError("__version__ not found in src/can_toolbox/__init__.py")
     return match.group(1)
 
 
@@ -83,13 +83,13 @@ def build_pyz(version: str) -> Path:
         staging = Path(tmp) / "staging"
         shutil.copytree(
             SRC_PKG,
-            staging / "dbc_compare_tool",
+            staging / "can_toolbox",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
         zipapp.create_archive(
             staging,
             target,
-            main="dbc_compare_tool.ui.main_window:main",
+            main="can_toolbox.ui.app:main",
             compressed=True,
         )
     # _resource_path() resolves to the folder containing the .pyzw,
@@ -169,7 +169,7 @@ def main() -> int:
         print(f"Built: {path.relative_to(REPO_ROOT)} ({size_mb:.1f} MB)")
     if any(p.suffix == ".pyzw" for p in built):
         print("Note: ship dist/resources/ alongside the .pyzw; target machine needs")
-        print("      Python >=3.9 with: pip install PySide6 cantools openpyxl")
+        print("      Python >=3.11 with: pip install -r requirements.txt")
     return 0
 
 
