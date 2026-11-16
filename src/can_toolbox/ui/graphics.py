@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from can_toolbox.canlog.signals import SignalRef, SignalSeries
+from can_toolbox.canlog.refs import SignalRef
 from can_toolbox.ui.widgets import TextBinder
 
 SIGNAL_MIME = "application/x-can-toolbox-signal"
@@ -137,7 +137,7 @@ class GraphPanel(QWidget):
     def __init__(self, binder: TextBinder, parent=None) -> None:
         super().__init__(parent)
         self._binder = binder
-        self.series: list[SignalSeries] = []
+        self.series: list = []  # SignalSeries
         self._plots: list[pg.PlotItem] = []
         self._cursors: list[list[pg.InfiniteLine]] = [[], []]
         self.cursor_time = [0.0, 0.0]
@@ -214,7 +214,7 @@ class GraphPanel(QWidget):
     def refs(self) -> list[SignalRef]:
         return [series.ref for series in self.series]
 
-    def add_series(self, series: SignalSeries) -> bool:
+    def add_series(self, series) -> bool:
         if series.ref in self.refs() or len(self.series) >= MAX_PLOTS:
             return False
         self.series.append(series)

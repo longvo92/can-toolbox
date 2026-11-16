@@ -18,6 +18,7 @@ GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log v
 
 ## Invariants
 - The app is GUI-only: no CLI entry point. `canlog/`, `dbc_compare/` and `blf_mat/` import no GUI framework (`tests/test_engine_is_qt_free.py`).
+- Opening the window imports no engine stack (numba, cantools/python-can, asammdf, scipy); engines import them on first use (`tests/test_startup_imports.py`).
 - `canlog` stays equivalent to python-can (frames) and cantools (signals); BLF objects it cannot represent are counted and reported, never dropped silently.
 - Tabs drive the engines through `dbc_compare/pipeline.py` and `blf_mat/options.py`; no comparison or conversion logic lives in `ui/`.
 - GUI options, report formats, MAT layouts and the YAML schema stay compatible unless a documented migration says otherwise.
