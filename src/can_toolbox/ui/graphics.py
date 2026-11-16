@@ -249,6 +249,15 @@ class GraphPanel(QWidget):
         finally:
             self._syncing = False
 
+    def restore_cursors(self, first: float, second: float, measure: bool) -> None:
+        """Put both cursors and the measure mode back, e.g. from a workspace."""
+        self.measure_input.setChecked(measure)
+        self.cursor_time[1] = second
+        for line in self._cursors[1]:
+            line.setValue(second)
+            line.setVisible(measure)
+        self.set_cursor(first)
+
     def set_languages(self) -> None:
         self._update_language()
 

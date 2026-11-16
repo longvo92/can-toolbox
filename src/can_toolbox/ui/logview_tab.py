@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -43,6 +45,7 @@ from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons
 _SETTINGS_PREFIX = "logview/"
 LOG_FILTER = "CAN logs (*.blf *.asc *.mf4);;BLF (*.blf);;ASC (*.asc);;MDF4 (*.mf4)"
 LOG_SUFFIXES = (".blf", ".asc", ".mf4")
+WORKSPACE_FILTER = "CAN Toolbox workspace (*.cantoolbox.json)"
 EXPORT_FILTER = "BLF (*.blf);;ASC (*.asc);;MDF4 (*.mf4);;CSV (*.csv);;MATLAB (*.mat)"
 _MAX_CHANNEL_CHOICES = 16
 
@@ -382,6 +385,7 @@ class LogViewerTab(QWidget):
         self._cursor_driving = False
         self.source = None
         self.last_export = None
+        self._pending_workspace = None
         self._status: tuple[str, dict] = ("Open a BLF, ASC or MF4 log.", {})
         self.log_path = settings.value(_SETTINGS_PREFIX + "last_log", "", type=str)
         self.dbc_assignments: list[tuple[str, int]] = self._load_assignments()
@@ -429,6 +433,15 @@ class LogViewerTab(QWidget):
         self.reload_button = self._button("Reload")
         self.dbc_button = self._button("DBC Files…")
         self.export_button = self._button("Export…")
+        self.workspace_button = QToolButton()
+        self.workspace_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._binder.bind(self.workspace_button.setText, "Workspace")
+        workspace_menu = QMenu(self.workspace_button)
+        self.open_workspace_action = workspace_menu.addAction("")
+        self.save_workspace_action = workspace_menu.addAction("")
+        self._binder.bind(self.open_workspace_action.setText, "Open Workspace…")
+        self._binder.bind(self.save_workspace_action.setText, "Save Workspace…")
+        self.workspace_button.setMenu(workspace_menu)
         self.file_label = QLabel()
         self.file_label.setObjectName("hintLabel")
         self.file_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -531,7 +544,8 @@ class LogViewerTab(QWidget):
 
         top = QHBoxLayout()
         top.setSpacing(8)
-        for widget in (self.open_button, self.reload_button, self.dbc_button, self.export_button):
+        for widget in (self.open_button, self.reload_button, self.dbc_button, self.export_button,
+                       self.workspace_button):
             top.addWidget(widget)
         top.addWidget(self.file_label, 1)
         self._add_labeled(top, "Mode", self.mode_input)
@@ -574,6 +588,8 @@ class LogViewerTab(QWidget):
         self.reload_button.clicked.connect(lambda: self.open_log(self.log_path))
         self.dbc_button.clicked.connect(self._edit_dbcs)
         self.export_button.clicked.connect(self._export)
+        self.open_workspace_action.triggered.connect(self._choose_workspace)
+        self.save_workspace_action.triggered.connect(self._save_workspace_as)
         self.cancel_button.clicked.connect(self._cancel_load)
         self.filter_input.returnPressed.connect(self._apply_filter)
         self.filter_input.textChanged.connect(lambda text: self._apply_filter() if not text else None)
@@ -636,6 +652,8 @@ class LogViewerTab(QWidget):
         self.reload_button.setEnabled(not busy and bool(self.log_path) and Path(self.log_path).is_file())
         self.dbc_button.setEnabled(not busy)
         self.export_button.setEnabled(loaded and not busy)
+        self.workspace_button.setEnabled(not busy)
+        self.save_workspace_action.setEnabled(loaded)
         for widget in (self.filter_input, self.channel_input, self.direction_input, self.errors_input,
                        self.mode_input, self.time_input, self.find_input, self.find_prev_button,
                        self.find_next_button, self.signal_search, self.add_signal_button):
@@ -745,7 +763,104 @@ class LogViewerTab(QWidget):
         self._set_controls_enabled()
 
     def _on_failed(self, message: str) -> None:
+        self._pending_workspace = None
         self._set_status("Could not open the log: {error}", error=message)
+
+    # -- workspace -----------------------------------------------------------------
+
+    def current_workspace(self):
+        from can_toolbox.canlog.workspace import Workspace
+
+        return Workspace(
+            log=self.log_path,
+            dbcs=tuple(self.dbc_assignments),
+            filter=self.filter_input.text(),
+            channel=int(self.channel_input.currentData() or 0),
+            direction=self.direction_input.currentData(),
+            errors=self.errors_input.isChecked(),
+            mode=self.mode_input.currentData(),
+            time=self.time_input.currentData(),
+            signals=tuple(self.graph.refs()),
+            cursors=tuple(self.graph.cursor_time),
+            measure=self.graph.measure_input.isChecked(),
+        )
+
+    def _save_workspace_as(self) -> None:
+        from can_toolbox.canlog.workspace import SUFFIX
+
+        start = self._settings.value(_SETTINGS_PREFIX + "last_workspace", "", type=str)
+        if not start and self.log_path:
+            start = str(Path(self.log_path).with_name(Path(self.log_path).stem + SUFFIX))
+        path, _ = QFileDialog.getSaveFileName(self, self._tr("Save Workspace…"), start, WORKSPACE_FILTER)
+        if path:
+            self.save_workspace(Path(path))
+
+    def save_workspace(self, path: Path) -> None:
+        from can_toolbox.canlog.workspace import SUFFIX, save_workspace
+
+        if not path.name.endswith(SUFFIX):
+            path = path.with_name(path.name.removesuffix(".json") + SUFFIX)
+        try:
+            save_workspace(path, self.current_workspace())
+        except OSError as exc:
+            self._set_status("Cannot save the workspace: {error}", error=exc)
+            return
+        self._settings.setValue(_SETTINGS_PREFIX + "last_workspace", str(path))
+        self._set_status("Workspace saved: {name}", name=path.name)
+
+    def _choose_workspace(self) -> None:
+        start = self._settings.value(_SETTINGS_PREFIX + "last_workspace", "", type=str)
+        path, _ = QFileDialog.getOpenFileName(self, self._tr("Open Workspace…"), start, WORKSPACE_FILTER)
+        if path:
+            self.open_workspace(Path(path))
+
+    def open_workspace(self, path: Path) -> None:
+        from can_toolbox.canlog.workspace import WorkspaceError, load_workspace
+
+        if self.is_busy():
+            return
+        try:
+            workspace = load_workspace(path)
+        except WorkspaceError as exc:
+            self._set_status("Cannot open the workspace: {error}", error=exc)
+            return
+        self._settings.setValue(_SETTINGS_PREFIX + "last_workspace", str(path))
+        self.dbc_assignments = list(workspace.dbcs)
+        self._save_assignments()
+        for combo, value in ((self.mode_input, workspace.mode), (self.time_input, workspace.time)):
+            index = combo.findData(value)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        if not workspace.log or not Path(workspace.log).is_file():
+            self._update_file_label()
+            self._set_status("The workspace log was not found: {path}", path=workspace.log)
+            return
+        self._pending_workspace = workspace
+        self.open_log(workspace.log)
+
+    def _apply_workspace(self, workspace) -> None:
+        """Restore trace settings and plots once the workspace log is loaded."""
+        for widget in (self.channel_input, self.direction_input, self.errors_input, self.filter_input):
+            widget.blockSignals(True)
+        try:
+            self.filter_input.setText(workspace.filter)
+            self.channel_input.setCurrentIndex(max(self.channel_input.findData(workspace.channel), 0))
+            self.direction_input.setCurrentIndex(max(self.direction_input.findData(workspace.direction), 0))
+            self.errors_input.setChecked(workspace.errors)
+        finally:
+            for widget in (self.channel_input, self.direction_input, self.errors_input, self.filter_input):
+                widget.blockSignals(False)
+        self._apply_filter()
+        self.graph.clear()
+        missing = []
+        for ref in workspace.signals:
+            before = len(self.graph.series)
+            self.plot_signal(ref, quiet=True)
+            if len(self.graph.series) == before:
+                missing.append(ref.signal)
+        self.graph.restore_cursors(*workspace.cursors, workspace.measure)
+        if missing:
+            self._set_status("Workspace opened; not found in this log: {signals}", signals=", ".join(missing))
 
     def _on_loaded(self, view) -> None:
         self.view = view
@@ -757,6 +872,9 @@ class LogViewerTab(QWidget):
         self._apply_filter()
         self._show_info()
         self._reset_signals()
+        if self._pending_workspace is not None:
+            workspace, self._pending_workspace = self._pending_workspace, None
+            self._apply_workspace(workspace)
         if view.log.warnings or view.database.errors:
             self.details.setCurrentWidget(self.info)
 
@@ -962,13 +1080,19 @@ class LogViewerTab(QWidget):
 
     def dragEnterEvent(self, event) -> None:
         urls = event.mimeData().urls() if event.mimeData().hasUrls() else []
-        if urls and Path(urls[0].toLocalFile()).suffix.lower() in LOG_SUFFIXES + (".dbc",):
+        first = Path(urls[0].toLocalFile()) if urls else None
+        if first and (first.suffix.lower() in LOG_SUFFIXES + (".dbc",) or first.name.endswith(".cantoolbox.json")):
             event.acceptProposedAction()
         else:
             event.ignore()
 
     def dropEvent(self, event) -> None:
         paths = [Path(url.toLocalFile()) for url in event.mimeData().urls()]
+        workspaces = [path for path in paths if path.name.endswith(".cantoolbox.json")]
+        if workspaces:
+            self.open_workspace(workspaces[0])
+            event.acceptProposedAction()
+            return
         dbcs = [str(path) for path in paths if path.suffix.lower() == ".dbc"]
         logs = [str(path) for path in paths if path.suffix.lower() in LOG_SUFFIXES]
         if dbcs:
