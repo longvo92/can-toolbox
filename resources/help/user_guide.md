@@ -66,6 +66,7 @@ Signals keep their CAN timestamps relative to the first frame; nothing is resamp
 4. Select a frame to see its decoded signals: physical value or value-table text, raw value and unit.
 5. **Filter** accepts IDs, ranges and name fragments, for example `100, 200-2FF, 18FF00x, Engine`; press Enter to apply. **Channel**, **Direction** and **Errors** narrow the trace further.
 6. **Mode → Fixed position** shows only the newest frame per channel and ID. **Time → Absolute** shows wall-clock time when the log records its start.
-7. **Find** jumps to the next or previous frame matching an ID or name. **Statistics** lists counts and cycle times per message; **Log Info** shows the file, start time, DBCs and anything the reader skipped, such as BLF markers or LIN objects.
+7. **Graphics:** the list on the left shows every message the log and DBCs share, by channel; type in **Search signals** to narrow it. Double-click a signal, drag it onto the graph or select several and click **Add to Graph**. Each signal gets its own plot on a shared time axis and holds its value until the next frame. Moving the cursor selects the matching frame in the trace and the reverse. Enable **Measure (2 cursors)** for values at both cursors, their difference and Δt. **Fit** rescales; **Remove Plot** and **Clear Graph** drop plots.
+8. **Find** jumps to the next or previous frame matching an ID or name. **Statistics** lists counts and cycle times per message; **Log Info** shows the file, start time, DBCs and anything the reader skipped, such as BLF markers or LIN objects.
 
-Graphics and cutting logs are not available yet.
+Cutting logs is not available yet.

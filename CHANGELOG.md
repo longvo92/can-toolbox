@@ -13,6 +13,7 @@ for the procedure.
 ### Added
 
 - **Log Viewer** tab: open BLF, ASC or MF4 logs as a CANoe-style trace with per-channel DBCs, decoded signal values, ID/range/name filters, find, fixed-position mode, absolute or relative time and per-message statistics.
+- Log Viewer graphics: plot DBC signals on a shared time axis with sample-and-hold steps, a cursor synchronized with the trace and a second cursor for differences.
 
 ### Changed
 

@@ -100,6 +100,7 @@ def stage_logview(workdir: Path) -> None:
 
     from can_toolbox.canlog import open_log
     from can_toolbox.canlog.database import DbcAssignment, LogDatabase
+    from can_toolbox.canlog.signals import SignalRef, SignalSource
     from can_toolbox.canlog.view import FrameFilter, FrameQuery, LogView
 
     root = workdir / "logview"
@@ -121,8 +122,11 @@ def stage_logview(workdir: Path) -> None:
         view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc)]))
         rows = view.apply(FrameFilter(FrameQuery.parse("sample")))
         stats = view.statistics()
+        series = SignalSource(view).series(SignalRef(1, 256, "Sample", "Speed"))
         if len(view.frames) != 20 or len(rows) != 10 or len(stats) != 1 or stats[0].count != 10:
             raise AssertionError(f"{path.name}: {len(view.frames)} frames, {len(rows)} filtered, {stats}")
+        if series.values.tolist() != [float(index) for index in range(1, 20, 2)]:
+            raise AssertionError(f"{path.name}: Speed decoded as {series.values.tolist()}")
         print(f"logview/{suffix[1:]}: {len(view.frames)} frames, {len(rows)} Sample")
 
 

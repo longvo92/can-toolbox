@@ -165,3 +165,49 @@ def test_bad_file_reports_error_and_vietnamese_labels(tab, tmp_path):
     assert tab.open_button.text() == "Mở log…"
     assert "Không mở được log" in tab.status.text()
     assert tab.model.headerData(3, Qt.Orientation.Horizontal) == "Tên"
+
+
+def test_graph_plots_signals_and_syncs_cursor_with_trace(tab, log_files):
+    from can_toolbox.ui.graphics import ref_from_mime, ref_to_mime
+
+    _load(tab, log_files[0])
+    tree = tab.signal_tree
+    assert tree.topLevelItemCount() == 1
+    engine = tree.topLevelItem(0)
+    assert engine.text(0).startswith("Engine  [100, CAN 1]")
+    rpm_item, gear_item = engine.child(0), engine.child(1)
+    tree.itemDoubleClicked.emit(rpm_item, 0)
+    tree.setCurrentItem(gear_item)
+    gear_item.setSelected(True)
+    tab.add_signal_button.click()
+    assert [series.ref.signal for series in tab.graph.series] == ["Rpm", "Gear"]
+    tab.plot_signal(rpm_item.data(0, Qt.ItemDataRole.UserRole))
+    assert len(tab.graph.series) == 2 and "already plotted" in tab.status.text()
+
+    # Trace selection moves the cursor; readout shows sample-and-hold values.
+    tab.trace.setCurrentIndex(tab.model.index(2, 0))
+    assert tab.graph.cursor_time[0] == pytest.approx(0.01)
+    assert tab.graph.readout.item(0, 1).text() == "2000 rpm"
+    assert tab.graph.readout.item(1, 1).text() == "Drive (1)"
+
+    # Dragging the graph cursor selects the last frame at or before it.
+    tab.graph._cursors[0][0].setValue(0.0251)
+    assert tab.trace.currentIndex().row() == 5
+    assert tab.graph.readout.item(1, 1).text() == "Park (0)"
+
+    tab.graph.measure_input.setChecked(True)
+    tab.graph._cursors[1][0].setValue(0.1)
+    assert "Δt = 0.074900 s" in tab.graph.delta_label.text()
+    assert tab.graph.readout.item(0, 3).text() == "0"
+
+    tree.apply_filter("gear")
+    assert not engine.isHidden() and rpm_item.isHidden() and not gear_item.isHidden()
+    assert ref_from_mime(ref_to_mime(gear_item.data(0, Qt.ItemDataRole.UserRole))).signal == "Gear"
+
+    tab.graph.readout.selectRow(0)
+    tab.graph.remove_selected()
+    assert [series.ref.signal for series in tab.graph.series] == ["Gear"]
+    tab.open_log(str(log_files[0]))  # reload keeps plots that still resolve
+    wait_until(lambda: not tab.is_busy() and tab.graph.series and tab.graph.series[0].ref.signal == "Gear")
+    tab.graph.clear()
+    assert not tab.graph.series and tab.graph.placeholder.isVisibleTo(tab.graph)

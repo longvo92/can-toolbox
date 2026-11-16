@@ -264,6 +264,8 @@ class LogViewerTab(QWidget):
         self._retired: list[Task] = []
         self._stats_dirty = True
         self._loaded_summary: dict[str, str] = {}
+        self._cursor_driving = False
+        self.source = None
         self._status: tuple[str, dict] = ("Open a BLF, ASC or MF4 log.", {})
         self.log_path = settings.value(_SETTINGS_PREFIX + "last_log", "", type=str)
         self.dbc_assignments: list[tuple[str, int]] = self._load_assignments()
@@ -332,6 +334,8 @@ class LogViewerTab(QWidget):
         self.find_input.setClearButtonEnabled(True)
         self.find_input.setMinimumWidth(140)
         self.filter_input.setMinimumWidth(220)
+        self._binder.bind(self.filter_input.setPlaceholderText, "IDs, ranges or names: 100, 200-2FF, 18FF00x, Engine")
+        self._binder.bind(self.find_input.setPlaceholderText, "ID or name")
         self.find_prev_button = QPushButton("◀")
         self.find_next_button = QPushButton("▶")
         self._binder.bind(self.find_prev_button.setToolTip, "Find previous")
@@ -369,12 +373,35 @@ class LogViewerTab(QWidget):
         self.details.addTab(self.stats_table, "")
         self.details.addTab(self.info, "")
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self.trace)
-        splitter.addWidget(self.details)
-        splitter.setStretchFactor(0, 3)
+        from can_toolbox.ui.graphics import GraphPanel, SignalTree
+
+        self.graph = GraphPanel(self._binder)
+        self.signal_search = QLineEdit()
+        self.signal_search.setClearButtonEnabled(True)
+        self._binder.bind(self.signal_search.setPlaceholderText, "Search signals")
+        self._binder.bind(self.signal_search.setAccessibleName, "Search signals")
+        self.signal_tree = SignalTree()
+        self.add_signal_button = self._button("Add to Graph")
+        browser = QWidget()
+        browser_layout = QVBoxLayout(browser)
+        browser_layout.setContentsMargins(0, 0, 0, 0)
+        browser_layout.addWidget(self.signal_search)
+        browser_layout.addWidget(self.signal_tree, 1)
+        browser_layout.addWidget(self.add_signal_button)
+
+        center = QSplitter(Qt.Orientation.Vertical)
+        center.addWidget(self.graph)
+        center.addWidget(self.trace)
+        center.addWidget(self.details)
+        center.setStretchFactor(0, 2)
+        center.setStretchFactor(1, 3)
+        center.setStretchFactor(2, 1)
+        center.setSizes([400, 300, 150])
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(browser)
+        splitter.addWidget(center)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([480, 200])
+        splitter.setSizes([230, 900])
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 1000)
@@ -440,13 +467,17 @@ class LogViewerTab(QWidget):
         self.find_next_button.clicked.connect(partial(self._find, True))
         self.find_prev_button.clicked.connect(partial(self._find, False))
         self.trace.selectionModel().currentRowChanged.connect(self._show_signals)
+        self.trace.selectionModel().currentRowChanged.connect(self._trace_moved)
         self.details.currentChanged.connect(lambda _: self._refresh_statistics())
+        self.signal_search.textChanged.connect(self.signal_tree.apply_filter)
+        self.signal_tree.signal_activated.connect(self.plot_signal)
+        self.add_signal_button.clicked.connect(self._plot_selected)
+        self.graph.signal_dropped.connect(self.plot_signal)
+        self.graph.cursor_moved.connect(self._cursor_moved)
 
     def _update_language(self) -> None:
         self._binder.set_language(self._binder.language)
         tr = self._tr
-        self._binder.bind(self.filter_input.setPlaceholderText, "IDs, ranges or names: 100, 200-2FF, 18FF00x, Engine")
-        self._binder.bind(self.find_input.setPlaceholderText, "ID or name")
         self.errors_input.setText(tr("Errors"))
         for index, key in enumerate(("All", "Rx", "Tx")):
             self.direction_input.setItemText(index, tr(key))
@@ -466,6 +497,7 @@ class LogViewerTab(QWidget):
         for index, key in enumerate(("Signal Values", "Statistics", "Log Info")):
             self.details.setTabText(index, tr(key))
         self._update_file_label()
+        self.graph.set_languages()
         key, parameters = self._status
         self._set_status(key, **parameters)
 
@@ -487,7 +519,7 @@ class LogViewerTab(QWidget):
         self.dbc_button.setEnabled(not busy)
         for widget in (self.filter_input, self.channel_input, self.direction_input, self.errors_input,
                        self.mode_input, self.time_input, self.find_input, self.find_prev_button,
-                       self.find_next_button):
+                       self.find_next_button, self.signal_search, self.add_signal_button):
             widget.setEnabled(loaded and not busy)
 
     # -- settings ------------------------------------------------------------------
@@ -560,6 +592,7 @@ class LogViewerTab(QWidget):
         self._stats_dirty = True
         self._apply_filter()
         self._show_info()
+        self._reset_signals()
         if view.log.warnings or view.database.errors:
             self.details.setCurrentWidget(self.info)
 
@@ -611,6 +644,7 @@ class LogViewerTab(QWidget):
             self._stats_dirty = True
             self._apply_filter()
             self._show_info()
+            self._reset_signals()
 
     # -- trace ---------------------------------------------------------------------
 
@@ -677,6 +711,55 @@ class LogViewerTab(QWidget):
             self.signals.addTopLevelItem(item)
         for column in range(3):
             self.signals.resizeColumnToContents(column)
+
+    # -- graphics ------------------------------------------------------------------
+
+    def _reset_signals(self) -> None:
+        """Rebuild the signal list for the current log and DBCs; keep plots that still resolve."""
+        from can_toolbox.canlog.signals import SignalSource
+
+        self.source = SignalSource(self.view)
+        self.signal_tree.populate(self.source.catalog())
+        self.signal_tree.apply_filter(self.signal_search.text())
+        refs = self.graph.refs()
+        self.graph.clear()
+        for ref in refs:
+            self.plot_signal(ref, quiet=True)
+
+    def plot_signal(self, ref, quiet: bool = False) -> None:
+        if self.view is None:
+            return
+        try:
+            series = self.source.series(ref)
+        except KeyError as exc:
+            if not quiet:
+                self._set_status("Cannot plot {signal}: {error}", signal=ref.signal, error=exc)
+            return
+        if not self.graph.add_series(series) and not quiet:
+            self._set_status("{signal} is already plotted or the graph is full.", signal=ref.signal)
+
+    def _plot_selected(self) -> None:
+        for ref in self.signal_tree.selected_refs():
+            self.plot_signal(ref)
+
+    def _cursor_moved(self, seconds: float) -> None:
+        """Graph cursor drives the trace: select the last frame at or before the cursor."""
+        if self.view is None or self.mode_input.currentData() == "fixed" or not self.model.rowCount():
+            return
+        position = self.view.position_at_time(self.view.origin_ns + int(round(seconds * 1e9)))
+        self._cursor_driving = True
+        try:
+            index = self.model.index(position, 0)
+            self.trace.setCurrentIndex(index)
+            self.trace.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
+        finally:
+            self._cursor_driving = False
+
+    def _trace_moved(self, current, _previous=None) -> None:
+        if self.view is None or not current.isValid() or self._cursor_driving:
+            return
+        row = self.model.frame_row(current.row())
+        self.graph.set_cursor((int(self.view.frames.time_ns[row]) - self.view.origin_ns) / 1e9)
 
     def _refresh_statistics(self) -> None:
         if self.view is None or not self._stats_dirty or self.details.currentWidget() is not self.stats_table:
