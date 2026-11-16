@@ -10,7 +10,9 @@ for the procedure.
 
 ## [Unreleased]
 
-DBC Compare Tool becomes **CAN Toolbox** (planned as 1.0.0) and absorbs the BLF to MAT converter (blf2mat 0.1.3).
+## [1.0.0] - 2026-11-16
+
+DBC Compare Tool becomes **CAN Toolbox** and absorbs the BLF to MAT converter (blf2mat 0.1.3).
 
 ### Added
 
