@@ -150,7 +150,7 @@ def test_asc_reader_matches_python_can(tmp_path):
         for message in messages:
             writer.on_message_received(message)
     log = open_log(path)
-    with can.ASCReader(str(path)) as reader:
+    with can.ASCReader(str(path), relative_timestamp=False) as reader:
         expected = list(reader)
     assert log.format == "ASC"
     assert len(log.frames) == len(expected)

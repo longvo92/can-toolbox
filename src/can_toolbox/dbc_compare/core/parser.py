@@ -3,9 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import cantools.database
-from cantools.database.errors import UnsupportedDatabaseFormatError
-
 from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
 
 EXTENDED_FRAME_FLAG = 0x80000000
@@ -20,6 +17,9 @@ class DbcParseError(ValueError):
 
 
 def parse_dbc(path: Path) -> DbcDatabase:
+    # cantools pulls in python-can and asammdf; importing it here keeps window start-up fast.
+    from cantools.database.errors import UnsupportedDatabaseFormatError
+
     try:
         cantools_db = _load_cantools_database(path)
     except OSError as exc:
@@ -46,6 +46,9 @@ def parse_dbc(path: Path) -> DbcDatabase:
 
 
 def _load_cantools_database(path: Path) -> Any:
+    import cantools.database
+    from cantools.database.errors import UnsupportedDatabaseFormatError
+
     text = _read_dbc_text(path)
     try:
         return cantools.database.load_string(

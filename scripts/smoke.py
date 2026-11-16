@@ -100,6 +100,7 @@ def stage_logview(workdir: Path) -> None:
 
     from can_toolbox.canlog import open_log
     from can_toolbox.canlog.database import DbcAssignment, LogDatabase
+    from can_toolbox.canlog.export import ExportRequest, export_log
     from can_toolbox.canlog.signals import SignalRef, SignalSource
     from can_toolbox.canlog.view import FrameFilter, FrameQuery, LogView
 
@@ -127,7 +128,10 @@ def stage_logview(workdir: Path) -> None:
             raise AssertionError(f"{path.name}: {len(view.frames)} frames, {len(rows)} filtered, {stats}")
         if series.values.tolist() != [float(index) for index in range(1, 20, 2)]:
             raise AssertionError(f"{path.name}: Speed decoded as {series.values.tolist()}")
-        print(f"logview/{suffix[1:]}: {len(view.frames)} frames, {len(rows)} Sample")
+        cut = export_log(view, ExportRequest(start_s=0.04, filtered=True), root / f"cut_{suffix[1:]}.blf")
+        if cut.frames != 8 or len(open_log(cut.path).frames) != 8:
+            raise AssertionError(f"{path.name}: cut kept {cut.frames} frames")
+        print(f"logview/{suffix[1:]}: {len(view.frames)} frames, {len(rows)} Sample, cut {cut.frames}")
 
 
 def stage_gui(_workdir: Path) -> None:

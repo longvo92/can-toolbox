@@ -7,21 +7,10 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from can_toolbox.canlog.decode import MessageCodec, rows_by_message
+from can_toolbox.canlog.refs import SignalRef
 from can_toolbox.canlog.view import LogView
 
-
-@dataclass(frozen=True)
-class SignalRef:
-    """One DBC signal as seen on one bus channel."""
-
-    channel: int
-    key: int
-    message: str
-    signal: str
-
-    @property
-    def label(self) -> str:
-        return f"{self.signal} ({self.message}, CAN {self.channel})"
+__all__ = ["CatalogEntry", "SignalRef", "SignalSeries", "SignalSource"]
 
 
 @dataclass(frozen=True)
