@@ -1,23 +1,25 @@
-# DBC Compare Tool
+# CAN Toolbox
 
-Compare CAN DBC files or baseline folders and generate an engineering-grade Excel change report through a CLI and an optional GUI.
+GUI-only Windows desktop app with two tools: compare CAN DBC files or baseline folders into an Excel change report, and convert CAN BLF logs to MATLAB MAT files or Simulink Datasets.
 
 ## Layout
-- `src/dbc_compare_tool/`: `core/` (comparison engine), `report/` (Excel reports), `ui/` (PySide6 GUI), `cli.py`, `i18n.py`, `release_notes.py`.
-- `scripts/` (`build.py`, `release_check.py`, `evaluate_pairing.py`), `examples/`, `resources/help/`, `tests/`; Windows launcher `run_gui.bat`.
+- `src/can_toolbox/`: `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (converter, Excel/TXT/YAML mapping, `options.py` validation), `ui/` (shell `main_window.py`, `compare_tab.py`, `blf_tab.py`, `widgets.py`, `style.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
+- `scripts/` (`build.py`, `release_check.py`, `smoke.py`, `evaluate_pairing.py`), `examples/` (DBC baselines, `blf/` mapping samples), `resources/help/`, `tests/`; Windows launcher `run_gui.bat`.
 
 ## Runtime
 - Python >=3.11; PySide6, cantools, openpyxl, numpy, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
 
 ## Commands
-- Environment: `PYTHONPATH=src` (tests must import the working tree, not an installed copy).
+- Environment: `PYTHONPATH=src` and `QT_QPA_PLATFORM=offscreen` (tests must import the working tree, not an installed copy).
 - Test: `python -m pytest -q` (`-m gui` / `-m "not gui"` split the Qt tests). Lint: `python -m ruff check .`
-- Smoke: `python scripts/smoke.py` (headless engine stages; `--gui` also opens the window offscreen)
+- Smoke: `python scripts/smoke.py` (headless compare and BLF stages; `--gui` also opens the window offscreen).
 - Build: `python scripts/build.py`. Release gate: `python scripts/release_check.py <X.Y.Z> --notes <file>`.
 
 ## Invariants
-- The app is GUI-only: no CLI entry point. Engines (`dbc_compare/`) stay independent of GUI frameworks and are exercised headlessly by `scripts/smoke.py` and the tests.
-- The GUI drives the same engine entry points as `dbc_compare/pipeline.py`; no comparison logic lives in `ui/`.
-- GUI options, report formats and configuration stay compatible unless a documented migration says otherwise.
+- The app is GUI-only: no CLI entry point. `dbc_compare/` and `blf_mat/` import no GUI framework (`tests/test_engine_is_qt_free.py`).
+- Tabs drive the engines through `dbc_compare/pipeline.py` and `blf_mat/options.py`; no comparison or conversion logic lives in `ui/`.
+- GUI options, report formats, MAT layouts and the YAML schema stay compatible unless a documented migration says otherwise.
+- Engine log text stays English; GUI chrome and the Excel report are localized (EN/VI).
+- Dataset export is verified only with a mocked MATLAB in tests; a licensed MATLAB run is separate evidence.
 
 Working rules live in the owner's global instructions.

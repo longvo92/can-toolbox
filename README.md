@@ -1,96 +1,73 @@
 <div align="center">
 
-# DBC Compare Tool
+# CAN Toolbox
 
-**Compare CAN DBC baselines and review changes in Excel.**
+**Compare CAN DBC baselines in Excel and convert BLF logs to MATLAB.**
 
-[![CI](https://github.com/longvo92/dbc-compare-tool/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/longvo92/dbc-compare-tool/actions/workflows/test.yml)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![CI](https://github.com/longvo92/can-toolbox/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/longvo92/can-toolbox/actions/workflows/test.yml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22A699.svg)](LICENSE)
 
-[Download](https://github.com/longvo92/dbc-compare-tool/releases/latest) · [Quick start](#quick-start) · [Usage](#usage) · [User Guide](resources/help/user_guide.md) · [Changelog](CHANGELOG.md)
+[Download](https://github.com/longvo92/can-toolbox/releases/latest) · [Quick start](#quick-start) · [User Guide](resources/help/user_guide.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
-Compare two CAN DBC files or baseline folders and export changes to Excel. Detect added, removed, modified and renamed messages and signals, including value tables and comments.
+A Windows desktop app with two tools in one window. **DBC Compare** finds added, removed, modified and renamed messages and signals between two DBC files or baseline folders and exports an Excel report. **BLF → MAT** converts CAN BLF logs to MATLAB `.mat` files or Simulink Signal Editor Datasets.
 
 ## Features
 
-| Feature | Use it to |
+| Tool | Use it to |
 |---|---|
-| File or folder comparison | Compare individual DBCs or complete baselines |
-| Classic pairing | Match DBCs by path, then rename evidence; match messages by frame/name, then signals by name/rename evidence |
-| ECU pairing | Map renamed nodes and review routing changes |
-| Excel reports | Filter changes and inspect OLD/NEW property values |
+| DBC Compare | Compare DBC files or whole baselines, pair renamed files and ECU nodes, focus on selected ECUs, review OLD/NEW values in Excel |
+| BLF → MAT | Export raw CAN frames, decode signals with DBC files, map them to model interfaces from Excel, TXT or YAML, write MAT or Simulink Datasets |
+| Both | English or Vietnamese interface, drag & drop paths, settings remembered between sessions |
 
-![DBC Compare Tool](docs/screenshot_main.png)
+![DBC Compare tab](docs/screenshot_main.png)
+
+![BLF to MAT tab](docs/screenshot_blf.png)
 
 ## Quick start
 
-1. Download the Windows `.exe` from [Releases](https://github.com/longvo92/dbc-compare-tool/releases/latest) and open it. No Python installation is needed.
-2. Choose **Files** or **Folders**, then select the OLD and NEW inputs.
-3. Click **Run Compare**, then **Open Report**.
+1. Download the Windows `.exe` from [Releases](https://github.com/longvo92/can-toolbox/releases/latest) and open it. No Python installation is needed.
+2. **DBC Compare:** choose **Files** or **Folders**, select OLD and NEW, click **Run Compare**, then **Open Report**.
+3. **BLF → MAT:** select a BLF file or folder, optionally a DBC and mapping files, click **Convert**, then **Open Output Folder**.
 
-See the [User Guide](resources/help/user_guide.md) for pairing, CLI and Excel basics. Sample inputs are in [examples/old](examples/old) and [examples/new](examples/new).
+Sample DBCs are in [examples/old](examples/old) and [examples/new](examples/new); BLF mapping examples are in [examples/blf](examples/blf).
 
-## The report
+## Outputs
 
-| Sheet | Use it to |
+| Tool | Output |
 |---|---|
-| Summary | Check Complete/Incomplete status, policy and inventory coverage |
-| DBC Overview (folder mode only) | Review file pairs, paths and parse errors |
-| Message Details | Review message changes and ECU routing |
-| Signal Details | Review signal changes and rename confidence |
-
-Use Excel column filters to find a change type, CAN ID or ECU.
-Read **Changed Properties** in each detail sheet for compact deltas, such as `Start Bit: 56->57; Length: 8->16`.
-Message and signal names, including parent message names, use separate OLD/NEW columns. Other fields show unchanged values once (`EVCC`) and changes as `EVCC->EVCC2`. Added/removed entries show only the existing value, without an arrow.
+| DBC Compare | `compared_<old>_vs_<new>.xlsx` beside NEW, or a path you choose: Summary, DBC Overview (folders), Message Details and Signal Details |
+| BLF → MAT | `mat_output` beside the log: `<log>.mat` raw frames, `<log>_signals.mat` DBC signals, or `<log>_input.mat` and `<log>_output.mat` for mapped interfaces |
 
 ## Requirements
 
-- Windows for the packaged desktop app.
-- Python 3.9+ for source use; core installation includes `cantools` and `openpyxl`. The GUI requires the `gui` extra (`PySide6`).
+- Windows for the packaged app.
+- MATLAB only for the Simulink Dataset format; MAT output needs no MATLAB.
+- Python 3.11+ to run from source.
 
 ## Install from source
 
 ```powershell
-git clone https://github.com/longvo92/dbc-compare-tool.git
-cd dbc-compare-tool
+git clone https://github.com/longvo92/can-toolbox.git
+cd can-toolbox
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[gui]"
+.\.venv\Scripts\python.exe -m pip install -e .
+.\run_gui.bat
 ```
 
-## Usage
+## Limitations
 
-From the repository folder, start the GUI with `.\run_gui.bat`, or run the CLI:
-
-```powershell
-.\run_cli.bat --old "examples\old" --new "examples\new" --out "report.xlsx"
-```
-
-- Pass two folders or two `.dbc` files. Quote paths containing spaces.
-- Omit `--out` to save beside NEW as `compared_<old>_vs_<new>.xlsx`. Set `--out` for scripts that require a fixed name.
-- Add `--include-unchanged` to include the full inventory.
-- Add `--ecu-pair OLD=NEW` for renamed ECU nodes. Repeat for multiple pairs.
-- Use `--list-ecus` to scan both inputs, then repeat `--ecu-focus NODE` for the nodes you want in the report. Focus includes Tx and signal-level Rx on either baseline.
-- Use `--report-language vi` for a Vietnamese Excel report. In the GUI, choose the display and report languages in **Settings → Language…**.
-
-## Review the results
-
-- The `classic-v067` policy pairs same-path DBCs first, then detects renamed files. Within paired files it matches messages by frame key, then name, then rename score; within paired messages it matches signals by name, then rename score.
-- Rename thresholds are 0.55 for DBCs, 0.60 for messages, 0.65 for signals and 0.55 for event-like signals. Unmatched entities are Added/Removed. Rename confidence remains heuristic.
-- Folder parse errors produce an **Incomplete** report with OLD/NEW paths and causes. Unreadable counts are **Unknown**; a valid file whose fixed manual counterpart failed is **Not compared**. Direct-file parse errors stop export.
-- Message names and frame keys must be unique per DBC; signal names must be unique per message. Duplicate entities are rejected, including in the database API.
-- Saved manual mappings are respected, including **Removed** rows. Message/signal moves across parents appear as Added/Removed.
-- CLI exit codes: `0` complete, `1` parse/processing/export failure, `2` invalid input/mapping, **`3` export or ECU scan completed with skipped DBCs**. Update scripts that previously treated partial reports as success.
-- **Unchanged** describes an item's own properties. Its parent or children may still change. Synthetic regression results do not establish production matching accuracy.
+- The app is GUI-only; there is no command line mode. Version 0.8.0 of DBC Compare Tool remains available for scripted comparisons.
+- DBC rename detection is heuristic; review Medium and Low confidence rows. Moves across messages or files appear as Added/Removed.
+- BLF → MAT keeps native CAN timestamps and does not resample.
 
 ## Documentation
 
-- [User Guide](resources/help/user_guide.md) — basic GUI, CLI and Excel usage
-- [Hướng dẫn tiếng Việt](resources/help/user_guide_vi.md)
-- [Architecture](docs/architecture.md) — components, matching rules, testing and builds
-- [Changelog](CHANGELOG.md) — release notes
+- [User Guide](resources/help/user_guide.md) · [Hướng dẫn tiếng Việt](resources/help/user_guide_vi.md)
+- [Architecture](docs/architecture.md) — components, rules, testing and builds
+- [Changelog](CHANGELOG.md)
 
 ## License
 
