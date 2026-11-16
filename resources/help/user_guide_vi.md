@@ -47,6 +47,7 @@ Signal giữ timestamp CAN tính từ frame đầu tiên; tool không resample. 
 4. Chọn một frame để xem các signal đã giải mã: giá trị vật lý hoặc text của value table, giá trị raw và đơn vị.
 5. **Lọc** nhận ID, khoảng ID và một phần tên, ví dụ `100, 200-2FF, 18FF00x, Engine`; nhấn Enter để áp dụng. **Channel**, **Hướng** và **Error frame** lọc thêm.
 6. **Chế độ → Vị trí cố định** chỉ hiện frame mới nhất của mỗi channel và ID. **Thời gian → Tuyệt đối** hiện giờ thực khi log có ghi thời điểm bắt đầu.
-7. **Tìm** nhảy tới frame kế tiếp hoặc trước đó khớp ID hoặc tên. **Thống kê** liệt kê số lượng và chu kỳ của từng message; **Thông tin log** hiện file, thời điểm bắt đầu, các DBC và những nội dung bị bỏ qua khi đọc, như marker hoặc object LIN trong BLF.
+7. **Đồ thị:** danh sách bên trái liệt kê mọi message có trong log và DBC, theo channel; gõ vào **Tìm signal** để lọc. Nhấp đúp vào signal, kéo thả lên đồ thị, hoặc chọn nhiều signal rồi bấm **Thêm vào đồ thị**. Mỗi signal có một plot riêng, dùng chung trục thời gian, và giữ giá trị đến frame kế tiếp. Di chuyển cursor sẽ chọn frame tương ứng trong trace và ngược lại. Bật **Đo (2 cursor)** để xem giá trị tại hai cursor, chênh lệch và Δt. **Vừa khung** để co giãn lại; **Bỏ plot** và **Xóa đồ thị** để bỏ plot.
+8. **Tìm** nhảy tới frame kế tiếp hoặc trước đó khớp ID hoặc tên. **Thống kê** liệt kê số lượng và chu kỳ của từng message; **Thông tin log** hiện file, thời điểm bắt đầu, các DBC và những nội dung bị bỏ qua khi đọc, như marker hoặc object LIN trong BLF.
 
-Chưa hỗ trợ đồ thị và cắt log.
+Chưa hỗ trợ cắt log.

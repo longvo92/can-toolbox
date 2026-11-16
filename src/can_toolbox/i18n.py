@@ -391,4 +391,18 @@ VI = {
     "Add DBC files": "Thêm file DBC",
     "ID": "ID",
     "Signal Values": "Giá trị signal",
+    # Log Viewer graphics
+    "Search signals": "Tìm signal",
+    "Add to Graph": "Thêm vào đồ thị",
+    "Fit": "Vừa khung",
+    "Measure (2 cursors)": "Đo (2 cursor)",
+    "Cursor 1": "Cursor 1",
+    "Cursor 2": "Cursor 2",
+    "Delta": "Chênh lệch",
+    "Time (s)": "Thời gian (s)",
+    "Double-click or drag signals from the list to plot them.": "Nhấp đúp hoặc kéo signal từ danh sách để vẽ đồ thị.",
+    "Cannot plot {signal}: {error}": "Không vẽ được {signal}: {error}",
+    "{signal} is already plotted or the graph is full.": "{signal} đã có trên đồ thị hoặc đồ thị đã đủ.",
+    "Remove Plot": "Bỏ plot",
+    "Clear Graph": "Xóa đồ thị",
 }

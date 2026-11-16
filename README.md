@@ -20,7 +20,7 @@ A Windows desktop app with three tools in one window. **Log Viewer** shows BLF, 
 |---|---|
 | DBC Compare | Compare DBC files or whole baselines, pair renamed files and ECU nodes, focus on selected ECUs, review OLD/NEW values in Excel |
 | BLF → MAT | Export raw CAN frames, decode signals with DBC files, map them to model interfaces from Excel, TXT or YAML, write MAT or Simulink Datasets |
-| Log Viewer | Trace BLF, ASC and MF4 logs with per-channel DBCs, decoded signal values, ID/name filters, find, fixed-position mode and per-message cycle statistics |
+| Log Viewer | Trace BLF, ASC and MF4 logs with per-channel DBCs, decoded signal values, ID/name filters, find, fixed-position mode and per-message cycle statistics; plot signals with synchronized measurement cursors |
 | All | English or Vietnamese interface, drag & drop paths, settings remembered between sessions |
 
 ![DBC Compare tab](docs/screenshot_main.png)
@@ -34,7 +34,7 @@ A Windows desktop app with three tools in one window. **Log Viewer** shows BLF, 
 1. Download the Windows `.exe` from [Releases](https://github.com/longvo92/can-toolbox/releases/latest) and open it. No Python installation is needed.
 2. **DBC Compare:** choose **Files** or **Folders**, select OLD and NEW, click **Run Compare**, then **Open Report**.
 3. **BLF → MAT:** select a BLF file or folder, optionally a DBC and mapping files, click **Convert**, then **Open Output Folder**.
-4. **Log Viewer:** click **Open Log…**, add DBCs with **DBC Files…**, then select a frame to see its signals.
+4. **Log Viewer:** click **Open Log…**, add DBCs with **DBC Files…**, then select a frame to see its signals or double-click a signal to plot it.
 
 Sample DBCs are in [examples/old](examples/old) and [examples/new](examples/new); BLF mapping examples are in [examples/blf](examples/blf).
 
@@ -66,7 +66,7 @@ py -m venv .venv
 - The app is GUI-only; there is no command line mode. Version 0.8.0 of DBC Compare Tool remains available for scripted comparisons.
 - DBC rename detection is heuristic; review Medium and Low confidence rows. Moves across messages or files appear as Added/Removed.
 - BLF → MAT keeps native CAN timestamps and does not resample.
-- Log Viewer has no graphics or log cutting yet and never replays or simulates. BLF objects other than CAN frames (markers, LIN, Ethernet) are listed in **Log Info**, not shown in the trace.
+- Log Viewer cannot cut logs yet and never replays or simulates. BLF objects other than CAN frames (markers, LIN, Ethernet) are listed in **Log Info**, not shown in the trace.
 
 ## Documentation
 

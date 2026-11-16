@@ -10,6 +10,7 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 | `canlog/table.py` | `FrameTable`: columnar frames (time, ID, channel, DLC, flags) with one flat payload buffer |
 | `canlog/blf.py`, `reader.py` | Compiled BLF reader and `open_log` for BLF and ASC |
 | `canlog/decode.py` | `MessageCodec`: vectorized DBC signal decoding, multiplexers included |
+| `canlog/signals.py` | `SignalSource`: catalog of decodable messages per channel and cached per-message decode into `SignalSeries` (time, values, unit, value table) |
 | `canlog/database.py`, `view.py` | Per-channel DBC lookup and single-frame display decode; `LogView`: time order, filters, find, fixed-position rows and statistics |
 | `dbc_compare/core/parser.py` | Parse DBCs and reject duplicate message names, signal names and frame keys before dictionary loss |
 | `dbc_compare/core/discovery.py`, `pairing.py` | Discover DBC files and select renamed file pairs |
@@ -21,7 +22,7 @@ CAN Toolbox is a GUI-only PySide6 app. One shell window hosts one tab per tool; 
 | `blf_mat/options.py` | `ConversionOptions`, validation (`OptionError`), MATLAB discovery and `run_conversion` |
 | `blf_mat/checks.py` | Non-destructive environment report; never starts MATLAB |
 | `ui/main_window.py` | Shell: header, Settings/Help menus, tab widget, language propagation, close guard |
-| `ui/compare_tab.py`, `ui/blf_tab.py`, `ui/logview_tab.py` | One tab per tool with its own workers, progress and status; the viewer's `TraceModel` formats only painted cells |
+| `ui/compare_tab.py`, `ui/blf_tab.py`, `ui/logview_tab.py` | One tab per tool with its own workers, progress and status; the viewer's `TraceModel` formats only painted cells; `ui/graphics.py` holds the pyqtgraph signal list and graph panel |
 | `ui/widgets.py`, `ui/style.py`, `ui/app.py` | Shared widgets and text binding, theme, entry point |
 
 A tab exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`. The shell disables language changes while any tab is busy and asks before quitting while a worker runs. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tab inputs under `compare/`, `blf/` and `logview/` (last log, DBC assignments as JSON). On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
@@ -46,7 +47,7 @@ The `classic-v067` pipeline matches same-relative-path files first, then conside
 
 ## Log viewer
 
-`LogViewerTab` reads a log on a `Task` thread (`load_view`: `open_log`, stable time sort, `LogDatabase.load`) with progress and cooperative cancel, then hands a `LogView` to `TraceModel`. Filters and fixed-position mode only swap the row index array; nothing is copied per frame. A DBC assigned to a channel wins over one assigned to all channels, then assignment order. Statistics run on a second `Task` when their tab is shown. ASC and MF4 go through python-can (MF4 needs asammdf); BLF uses the Numba reader. Tests that wait on these threads must release the GIL (`time.sleep`), because `QTest.qWait` holds it and starves imports and JIT compilation on the worker.
+`LogViewerTab` reads a log on a `Task` thread (`load_view`: `open_log`, stable time sort, `LogDatabase.load`) with progress and cooperative cancel, then hands a `LogView` to `TraceModel`. Filters and fixed-position mode only swap the row index array; nothing is copied per frame. A DBC assigned to a channel wins over one assigned to all channels, then assignment order. Statistics run on a second `Task` when their tab is shown. Graphics decode a message once per channel (`SignalSource` cache) on the GUI thread; each signal is one pyqtgraph plot with `stepMode="right"`, peak downsampling and clip-to-view, X-linked to the first. The main cursor and the trace drive each other through `position_at_time`. ASC and MF4 go through python-can (MF4 needs asammdf); BLF uses the Numba reader. Tests that wait on these threads must release the GIL (`time.sleep`), because `QTest.qWait` holds it and starves imports and JIT compilation on the worker.
 
 ## BLF conversion
 
