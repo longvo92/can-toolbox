@@ -17,8 +17,12 @@ for the procedure.
 - Log Viewer **Export…**: cut by time range or graph cursors, trace filter and channel mapping, and save as BLF, ASC, MF4, CSV or MAT.
 - Log Viewer workspaces save and reopen the log, DBCs, trace settings, plotted signals and cursors.
 
+- **Settings…** gathers the preferences that are not part of one job: GUI and report language, the theme and the MATLAB executable with **Detect** and **Check Environment**.
+- A **dark theme**: follow Windows, or pick Light or Dark yourself. Trace, graphics and every dialog change with it.
+
 ### Changed
 
+- The MATLAB executable moved from the BLF → MAT window into **Settings**; the one you had set is carried over.
 - The app opens straight into the Log Viewer. Trace, Signal Browser and Details are dockable panels you can hide or rearrange from **View**, and the layout comes back the way you left it.
 - **DBC Compare** and **BLF → MAT** now open from the **Tools** menu, each in its own window, so a comparison can run while you read a log.
 - **BLF → MAT** reads and decodes logs many times faster; output files are unchanged.

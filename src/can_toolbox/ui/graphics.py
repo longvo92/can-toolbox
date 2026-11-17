@@ -25,16 +25,14 @@ from PySide6.QtWidgets import (
 )
 
 from can_toolbox.canlog.refs import SignalRef
+from can_toolbox.ui import theme as app_theme
 from can_toolbox.ui.widgets import TextBinder
 
 SIGNAL_MIME = "application/x-can-toolbox-signal"
 MAX_PLOTS = 16
 PLOT_HEIGHT = 110
-# Distinct on white, in the order CANoe-like tools assign them.
-PALETTE = ("#1d4ed8", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be185d", "#4d7c0f",
-           "#7c3aed", "#b45309", "#0f766e", "#e11d48", "#2563eb", "#65a30d", "#c026d3", "#475569")
 
-pg.setConfigOptions(background="w", foreground="#1f2430", antialias=False)
+pg.setConfigOptions(antialias=False)
 
 
 def ref_to_mime(ref: SignalRef) -> QMimeData:
@@ -142,8 +140,11 @@ class GraphPanel(QWidget):
         self._cursors: list[list[pg.InfiniteLine]] = [[], []]
         self.cursor_time = [0.0, 0.0]
         self._syncing = False
+        self._theme = app_theme.current_theme()
+        app_theme.manager.changed.connect(self.apply_theme)
 
         self.canvas = _DropArea()
+        self.canvas.setBackground(self._theme.plot_bg)
         self.canvas.dropped.connect(self.signal_dropped)
         self.canvas.ci.setSpacing(0)
         self.placeholder = QLabel()
@@ -258,6 +259,12 @@ class GraphPanel(QWidget):
             line.setVisible(measure)
         self.set_cursor(first)
 
+    def apply_theme(self, theme) -> None:
+        """Repaint the plots in ``theme``: background, axes, curves and cursors."""
+        self._theme = theme
+        self.canvas.setBackground(theme.plot_bg)
+        self._rebuild()
+
     def set_languages(self) -> None:
         self._update_language()
 
@@ -281,13 +288,18 @@ class GraphPanel(QWidget):
         self._plots = []
         self._cursors = [[], []]
         first = None
+        theme = self._theme
         for index, series in enumerate(self.series):
-            color = PALETTE[index % len(PALETTE)]
+            color = theme.curves[index % len(theme.curves)]
             plot = self.canvas.addPlot(row=index, col=0)
-            plot.showGrid(x=True, y=True, alpha=0.15)
+            plot.showGrid(x=True, y=True, alpha=theme.grid_alpha)
             plot.setMenuEnabled(False)
             plot.getAxis("left").setWidth(64)
             plot.hideButtons()
+            for edge in ("left", "bottom"):
+                axis = plot.getAxis(edge)
+                axis.setTextPen(theme.plot_fg)
+                axis.setPen(theme.plot_fg)
             if series.unit:
                 plot.setTitle(f"<span style='color:{color}'>{series.ref.signal} [{series.unit}]</span>", size="8pt")
             else:
@@ -308,7 +320,7 @@ class GraphPanel(QWidget):
                 plot.getAxis("bottom").setStyle(showValues=False)
             else:
                 plot.setLabel("bottom", self._binder.tr("Time (s)"))
-            for cursor, color_line in ((0, "#111827"), (1, "#f59e0b")):
+            for cursor, color_line in ((0, theme.cursor_primary), (1, theme.cursor_secondary)):
                 line = pg.InfiniteLine(
                     pos=self.cursor_time[cursor], angle=90, movable=True, pen=pg.mkPen(color_line, width=1),
                 )
@@ -350,7 +362,7 @@ class GraphPanel(QWidget):
         self.readout.setRowCount(len(self.series))
         for row, series in enumerate(self.series):
             item = QTableWidgetItem(series.ref.label)
-            item.setForeground(QColor(PALETTE[row % len(PALETTE)]))
+            item.setForeground(QColor(self._theme.curves[row % len(self._theme.curves)]))
             item.setToolTip(series.ref.label)
             self.readout.setItem(row, 0, item)
         self._update_readout()

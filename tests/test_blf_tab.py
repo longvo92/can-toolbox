@@ -90,11 +90,11 @@ def test_blf_and_dbc_convert_through_the_worker_and_save_inputs(window, sample, 
     with patch(f"{_TAB}.QMessageBox.critical") as error:
         tab.convert_button.click()
         assert isinstance(tab.worker, ConvertWorker)
-        assert not window.language_action.isEnabled()
+        assert not window.settings_action.isEnabled()
         wait_until(lambda: tab.convert_button.isEnabled())
     error.assert_not_called()
     assert busy == [True, False]
-    assert window.language_action.isEnabled()
+    assert window.settings_action.isEnabled()
     assert tab.run_status.text() == "Conversion complete · 1 BLF file(s)"
     assert tab.open_button.isEnabled()
     assert tab.last_output == sample["output"].resolve()
@@ -135,10 +135,8 @@ def test_conversion_failure_restores_controls_and_reports(window, sample):
 
 def test_format_and_workbook_enable_their_options(window, sample):
     tab = window.blf_tab
-    assert not tab.matlab_input.isEnabled()
     assert not tab.sheets_button.isEnabled()
     tab.format_input.setCurrentIndex(tab.format_input.findData("dataset"))
-    assert tab.matlab_input.isEnabled() and tab.detect_matlab_button.isEnabled()
     tab.excel_input.setText(str(sample["root"] / "interfaces.xlsx"))
     assert tab.sheets_button.isEnabled() and tab.header_row_input.isEnabled()
 
@@ -159,23 +157,14 @@ def test_format_and_workbook_enable_their_options(window, sample):
     assert not tab.sheets_button.isEnabled()
 
 
-def test_mat_format_never_passes_matlab(window, sample):
+def test_mat_format_takes_matlab_from_settings(window, sample, settings):
+    """MAT needs no MATLAB; Dataset uses the executable saved in Settings."""
     tab = window.blf_tab
     tab.blf_input.setText(str(sample["blf"]))
-    tab.matlab_input.setText(str(Path(__file__)))
+    settings.setValue("matlab/executable", str(Path(__file__)))
     assert tab._options().matlab == ""
     tab.format_input.setCurrentIndex(tab.format_input.findData("dataset"))
     assert tab._options().matlab == str(Path(__file__))
-
-
-def test_environment_check_logs_module_status(window):
-    tab = window.blf_tab
-    tab.check_button.click()
-    wait_until(lambda: tab.check_button.isEnabled(), timeout=60)
-    log = tab.log_view.toPlainText()
-    assert "[OK] numpy" in log
-    assert "MATLAB" in log
-    assert tab.run_status.text() in {"Environment ready", "Environment problems found — see log"}
 
 
 def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):

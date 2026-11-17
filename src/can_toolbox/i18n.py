@@ -131,6 +131,12 @@ VI = {
     "Settings": "Cài đặt",
     "Language": "Ngôn ngữ",
     "Language…": "Ngôn ngữ…",
+    "Settings…": "Cài đặt…",
+    "Appearance": "Giao diện",
+    "Theme": "Chủ đề",
+    "Follow Windows": "Theo Windows",
+    "Light": "Sáng",
+    "Dark": "Tối",
     "Help": "Trợ giúp",
     # Shell: menus, docks and toolbars of the log viewer window
     "View": "Hiển thị",
@@ -295,8 +301,11 @@ VI = {
     "Detected automatically when blank": "Tự động tìm khi để trống",
     "Detect": "Tìm",
     "Find MATLAB on PATH or in the usual install folders.": "Tìm MATLAB trong PATH hoặc các thư mục cài đặt thường gặp.",
-    "MAT needs no MATLAB. Simulink Dataset runs MATLAB once to package every log.":
-        "MAT không cần MATLAB. Simulink Dataset chạy MATLAB một lần để đóng gói mọi log.",
+    "MAT needs no MATLAB. Simulink Dataset runs the MATLAB from Settings once per run.":
+        "MAT không cần MATLAB. Simulink Dataset chạy MATLAB khai báo trong Settings một lần mỗi lần chạy.",
+    "MAT files need no MATLAB. Simulink Dataset export runs it once.":
+        "File MAT không cần MATLAB. Export Simulink Dataset chạy MATLAB một lần.",
+    "Check Environment reports the runtime here.": "Kết quả kiểm tra môi trường hiện ở đây.",
     "File…": "File…",
     "Folder…": "Thư mục…",
     "Clear": "Xóa",

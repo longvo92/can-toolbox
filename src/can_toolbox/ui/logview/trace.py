@@ -7,6 +7,8 @@ import datetime
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFontDatabase
 
+from can_toolbox.ui import theme as app_theme
+
 COLUMNS = ("Time", "Chn", "ID", "Name", "Dir", "Type", "DLC", "Data")
 
 
@@ -85,10 +87,11 @@ class TraceModel(QAbstractTableModel):
         elif role == Qt.ItemDataRole.FontRole and column in (0, 2, 7):
             return self._mono
         elif role == Qt.ItemDataRole.ForegroundRole:
+            theme = app_theme.current_theme()
             if flags & FLAG_ERROR:
-                return QColor("#b91c1c")
+                return QColor(theme.error)
             if flags & FLAG_REMOTE:
-                return QColor("#64748b")
+                return QColor(theme.disabled_soft)
         elif role == Qt.ItemDataRole.TextAlignmentRole and column in (0, 1, 6):
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return None

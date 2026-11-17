@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from can_toolbox.app_paths import resource_path
 from can_toolbox.ui.main_window import MainWindow
-from can_toolbox.ui.style import configure_appearance
+from can_toolbox.ui.theme import configure_appearance
 
 __all__ = ["configure_appearance", "main"]
 
