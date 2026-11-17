@@ -13,11 +13,12 @@
 </div>
 
 A Windows desktop app for CAN work. The window **is** a log viewer: BLF, ASC and MF4
-logs as a CANoe-style trace decoded with your DBC files, signals plotted on a shared
-time axis with measurement cursors, and one **Export** window that writes the cut as
-BLF, ASC, MF4, CSV, MAT frames, MAT signals or a Simulink Dataset. **DBC Compare**
-opens from the Tools menu and reports added, removed, modified and renamed messages
-and signals in Excel.
+logs as a CANoe-style trace decoded with your DBC files — expand a frame to read its
+signals — several logs open at once, signals grouped in a list beside the graph and
+plotted on a shared time axis with measurement cursors, and one **Export** window that
+writes the cut as BLF, ASC, MF4, CSV, MAT frames, MAT signals or a Simulink Dataset.
+**DBC Compare** opens from the Tools menu and reports added, removed, modified and
+renamed messages and signals in Excel.
 
 ![Log Viewer](docs/screenshot_logview.png)
 
@@ -25,8 +26,9 @@ and signals in Excel.
 
 | Area | Use it to |
 |---|---|
-| Trace | Open BLF, ASC and MF4 logs, assign DBCs per channel, read decoded signal values, filter by ID, range or name, find, fixed-position mode, per-message cycle statistics |
-| Graphics | Plot signals as sample-and-hold steps, Fit / Fit X / Fit Y, zoom, two cursors with values and Δt, cursor and trace follow each other |
+| Trace | Open BLF, ASC and MF4 logs, assign DBCs per channel, expand a frame into its decoded signals, filter by ID, range or name, find, fixed-position mode, per-message cycle statistics |
+| Logs | Keep several logs open, switch which one the window shows, and export, reload or close any of them from the Logs panel |
+| Graphics | Group the plotted signals, tick what is drawn, read each one at both cursors with Min, Max and Δ, Fit / Fit X / Fit Y, zoom, step to the next value change, save the plots as a PNG |
 | Export | One window: range (whole log, between cursors, trace filter), channel map, time base, and as many output formats as you need from the same cut |
 | DBC Compare | Compare DBC files or whole baselines, pair renamed files and ECU nodes, focus on selected ECUs, review OLD/NEW values in Excel |
 | Everywhere | Light and dark theme (or follow Windows), English or Tiếng Việt, drag & drop, dockable panels, workspaces, settings remembered |
@@ -40,8 +42,8 @@ and signals in Excel.
 ## Quick start
 
 1. Download the Windows `.exe` from [Releases](https://github.com/longvo92/can-toolbox/releases/latest) and open it. No Python installation is needed.
-2. **Open Log…** (or drop a `.blf`, `.asc` or `.mf4` on the window), then **DBC Files…** to assign databases to channels.
-3. Select a frame to see its decoded signals. Open **View → Signal Browser** and double-click a signal to plot it.
+2. **File → Open Log…** (or drop `.blf`, `.asc` or `.mf4` files on the window — several at once is fine), then **File → DBC Files…** to assign databases to channels.
+3. Expand a frame in the trace to read its signals. Open **View → Signal Browser** and double-click a signal to plot it; the list beside the graph holds the plots, in groups if you want them.
 4. **Export…** cuts the log and writes the formats you tick.
 5. **Tools → DBC Compare…** opens the comparison in its own window; **Settings → Settings…** holds language, theme and the MATLAB executable.
 
