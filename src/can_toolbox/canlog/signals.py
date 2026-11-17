@@ -12,6 +12,10 @@ from can_toolbox.canlog.view import LogView
 
 __all__ = ["CatalogEntry", "SignalRef", "SignalSeries", "SignalSource"]
 
+# Half a microsecond: closer than any CAN timestamp, so a cursor sitting exactly
+# on a change still steps to the next one.
+_CHANGE_EPSILON = 5e-7
+
 
 @dataclass(frozen=True)
 class SignalSeries:
@@ -30,6 +34,28 @@ class SignalSeries:
         """Sample-and-hold value at ``seconds``; ``None`` before the first sample."""
         index = int(np.searchsorted(self.time, seconds, side="right")) - 1
         return None if index < 0 or not len(self.values) else float(self.values[index])
+
+    def change_times(self) -> np.ndarray:
+        """Times at which the held value changes, the first sample included."""
+        if not len(self.time):
+            return np.zeros(0)
+        changed = np.flatnonzero(self.values[1:] != self.values[:-1]) + 1
+        return np.concatenate(([self.time[0]], self.time[changed]))
+
+    def next_change(self, seconds: float, *, forward: bool = True) -> float | None:
+        """The next (or previous) time this signal takes a new value.
+
+        ``None`` when there is none in that direction, so a cursor at the last
+        change stays where it is.
+        """
+        times = self.change_times()
+        if not len(times):
+            return None
+        if forward:
+            later = times[times > seconds + _CHANGE_EPSILON]
+            return float(later[0]) if len(later) else None
+        earlier = times[times < seconds - _CHANGE_EPSILON]
+        return float(earlier[-1]) if len(earlier) else None
 
     def text_at(self, seconds: float) -> str:
         value = self.value_at(seconds)

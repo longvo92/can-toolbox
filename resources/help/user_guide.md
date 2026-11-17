@@ -1,13 +1,13 @@
 # User Guide
 
-The window is the Log Viewer. **Tools** opens DBC Compare in its own window, and
-**Settings → Settings…** holds the language, the theme (follow Windows, Light or Dark)
-and the MATLAB executable.
+The window is the Log Viewer. **File** holds everything about the open log, **Tools**
+opens DBC Compare in its own window, and **Settings → Settings…** holds the language, the
+theme (follow Windows, Light or Dark), the graph line width and the MATLAB executable.
 
 ## Log Viewer
 
-1. Click **Open Log…** or drop a `.blf`, `.asc` or `.mf4` file on the window. Large logs load in the background; **Cancel** stops reading.
-2. Click **DBC Files…** to add databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the window adds them for all channels.
+1. **File → Open Log…** (Ctrl+O) or drop a `.blf`, `.asc` or `.mf4` file on the window. Large logs load in the background; **Cancel** stops reading. **File → Recent Logs** reopens the last eight logs, and **Reload** (F5) reads the current one again.
+2. **File → DBC Files…** adds databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the window adds them for all channels.
 3. The trace lists every frame: time, channel, ID (extended IDs end in `x`, as in CANoe), message name, direction, type, DLC and data. Error frames are red.
 4. Select a frame to see its decoded signals in **Signal Values**: physical value or value-table text, raw value and unit.
 5. **View** shows the panels the first screen leaves out: the filter bar, **Signal Browser**, **Signal Values**, **Statistics** and **Log Info**. Right-click the trace to open one as its own window, to plot every signal of a message, or to move the cursor to a frame. Drag a panel back onto the window to dock it; the layout comes back next time.
@@ -21,17 +21,21 @@ Open **View → Signal Browser**, type in **Search signals**, then double-click 
 drag it onto the graph or select several and click **Add to Graph**. Each signal gets its
 own plot on a shared time axis and holds its value until the next frame.
 
-| Toolbar | Does |
+The graph has its own toolbar:
+
+| Button | Does |
 |---|---|
-| **Fit** | Whole log on the time axis, then rescale every plot to it |
-| **Fit X** | Time axis covers the whole log, whatever the plotted signals cover |
-| **Fit Y** | Rescale every plot to the time range on screen |
+| **Fit ▾** | Whole log on the time axis, then rescale every plot to it; the menu holds **Fit X** (time axis only) and **Fit Y** (plots only) |
 | **Zoom in / out** | Scale the time axis around cursor 1 |
 | **Cursor 1 / Cursor 2** | Show the main cursor and the measurement cursor |
+| **◀ / ▶** | Move cursor 1 to the previous or next time the selected signal changes value |
+| **Remove plot / Clear** | Drop the selected plot, or all of them |
+| **Image ▾** | Save the plots as a PNG, or copy them to the clipboard |
 
-Moving a cursor selects the matching frame in the trace, and selecting a frame moves the
-cursor. With **Cursor 2** on, the readout lists the value at each cursor, their difference
-and Δt. **Remove Plot** and **Clear Graph** drop plots.
+Each plot is named on its left axis, in the colour of its curve; the full name and unit are
+in its tooltip. Moving a cursor selects the matching frame in the trace, and selecting a
+frame moves the cursor. With **Cursor 2** on, the readout lists the value at each cursor,
+their difference and Δt, shown at the end of the toolbar.
 
 ### Workspaces
 

@@ -391,11 +391,11 @@ def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legac
         app.processEvents()
 
 
-def test_default_screen_is_toolbar_graphics_and_trace(window):
+def test_default_screen_is_graphics_and_trace(window):
     """Everything else starts hidden and comes back from the View menu."""
     window.show()
     assert window.centralWidget() is window.graph  # Graphics is the work surface
-    assert not window.trace_dock.isHidden() and not window.toolbar.isHidden()
+    assert not window.trace_dock.isHidden() and not window.graph.toolbar.isHidden()
     assert window.filter_toolbar.isHidden()
     hidden = {
         "Signal Browser": window.browser_dock, "Signal Values": window.values_dock,
@@ -460,7 +460,7 @@ def test_fit_x_covers_the_log_and_fit_y_follows_the_visible_window(window, log_f
     window.hide()
 
 
-def test_toolbar_icons_follow_the_theme(window, app):
+def test_action_icons_follow_the_theme(window, app):
     from can_toolbox.ui import theme as app_theme
 
     assert not window.open_action.icon().isNull()
@@ -571,3 +571,99 @@ def test_a_mapping_file_beside_the_app_counts_as_definitions(window, log_files, 
         assert str(beside) in dialog.config_input.placeholderText()
     finally:
         dialog.deleteLater()
+
+
+def test_file_menu_lists_recent_logs_and_drops_missing_ones(window, log_files, tmp_path):
+    """Opening a log remembers it; the menu keeps the newest eight that still exist."""
+    second = tmp_path / "second.blf"
+    second.write_bytes(log_files[0].read_bytes())
+    _load(window, log_files[0])
+    _load(window, second)
+    assert window.recent_logs() == [str(second), str(log_files[0])]
+    assert [action.text() for action in window.recent_menu.actions()] == ["second.blf", "drive.blf"]
+
+    # Opening a remembered log again moves it to the front instead of repeating it.
+    _load(window, log_files[0])
+    assert window.recent_logs() == [str(log_files[0]), str(second)]
+
+    second.unlink()
+    window._fill_recent_menu()
+    assert window.recent_logs() == [str(log_files[0])]
+    assert [action.text() for action in window.recent_menu.actions()] == ["drive.blf"]
+
+    many = [tmp_path / f"log{index}.blf" for index in range(12)]
+    for path in many:
+        path.write_bytes(log_files[0].read_bytes())
+        window._remember_log(str(path))
+    assert len(window.recent_logs()) == 8
+    assert window.recent_logs()[0] == str(many[-1])
+
+
+def test_graph_toolbar_holds_the_window_actions_and_its_own(window, log_files):
+    graph = window.graph
+    names = [action.property("iconName") for action in graph.toolbar.actions() if action.property("iconName")]
+    assert names == ["zoom-in", "zoom-out", "cursor-1", "cursor-2", "prev-change", "next-change",
+                     "remove-plot", "clear-graph"]
+    assert graph.fit_button.defaultAction() is window.fit_action
+    assert [action.property("iconName") for action in graph.fit_button.menu().actions()] == ["fit", "fit-x", "fit-y"]
+    assert [action.text() for action in graph.image_button.menu().actions()] == ["Save Image…", "Copy Image"]
+    assert not graph.clear_action.isEnabled()  # nothing plotted yet
+
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+    assert graph.clear_action.isEnabled() and graph.next_change_action.isEnabled()
+
+
+def test_cursor_jumps_to_the_next_value_change(window, log_files):
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    gear = tree.topLevelItem(0).child(1).data(0, Qt.ItemDataRole.UserRole)
+    window.plot_signal(gear)
+    graph = window.graph
+    series = graph.series[0]
+
+    graph.set_cursor(0.0)
+    assert graph.jump_to_change(forward=True)
+    first = graph.cursor_time[0]
+    assert first == pytest.approx(float(series.change_times()[1]))
+    assert graph.jump_to_change(forward=True) and graph.cursor_time[0] > first
+    assert graph.jump_to_change(forward=False) and graph.cursor_time[0] == pytest.approx(first)
+
+    graph.set_cursor(float(series.change_times()[0]))
+    assert not graph.jump_to_change(forward=False)  # nothing before the first sample
+    graph.clear()
+    assert not graph.jump_to_change(forward=True)  # nothing plotted
+
+
+def test_line_width_setting_is_applied_to_the_curves(window, log_files, settings):
+    from can_toolbox.ui.settings_dialog import DEFAULT_LINE_WIDTH, line_width
+
+    assert line_width(settings) == DEFAULT_LINE_WIDTH
+    assert window.graph.line_width() == DEFAULT_LINE_WIDTH
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+
+    def pens():
+        return [item.opts["pen"].width() for plot in window.graph._plots
+                for item in plot.listDataItems()]
+
+    assert pens() == [DEFAULT_LINE_WIDTH]
+    window.graph.set_line_width(4)
+    assert pens() == [4]
+    window.graph.set_line_width(9)  # clamped to the offered range
+    assert window.graph.line_width() == 4
+    settings.setValue("graph/line_width", 7)
+    assert line_width(settings) == DEFAULT_LINE_WIDTH  # an unknown value falls back
+
+
+def test_lane_is_labelled_on_its_axis_with_the_full_name_as_tooltip(window, log_files):
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+    plot = window.graph._plots[0]
+    assert plot.titleLabel.text == ""  # no title row: the lane is short
+    axis = plot.getAxis("left")
+    assert "Rpm" in axis.labelText
+    assert axis.label.toolTip() == "Rpm (Engine, CAN 1) [rpm]"

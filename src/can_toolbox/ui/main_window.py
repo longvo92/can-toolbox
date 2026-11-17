@@ -20,7 +20,7 @@ from can_toolbox.app_paths import changelog_path, resource_path
 from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.ui.logview.window import LogViewerWindow
-from can_toolbox.ui.settings_dialog import migrate_tool_settings, open_settings, theme_mode
+from can_toolbox.ui.settings_dialog import line_width, migrate_tool_settings, open_settings, theme_mode
 from can_toolbox.ui.theme import configure_appearance, current_theme
 from can_toolbox.ui.tool_windows import ToolWindow
 from can_toolbox.ui.widgets import dialog_buttons
@@ -194,11 +194,13 @@ class MainWindow(LogViewerWindow):
         self.set_gui_language(gui_language)
 
     def _show_settings(self) -> None:
-        open_settings(
+        saved = open_settings(
             self, self._binder, self._settings,
             gui_language=self.gui_language, report_language=self._report_language,
             apply=self._set_languages,
         )
+        if saved:
+            self.graph.set_line_width(line_width(self._settings))
 
     # -- shutdown ------------------------------------------------------------------
 

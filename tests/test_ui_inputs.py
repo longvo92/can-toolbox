@@ -239,12 +239,13 @@ class GuiInputTests(unittest.TestCase):
 
         def choose(dialog, accepted):
             self.assertEqual(dialog.windowTitle(), "Settings")
-            gui, report, theme = dialog.findChildren(QComboBox)
-            self.assertEqual((gui.currentData(), report.currentData(), theme.currentData()),
-                             ("en", "gui", "system"))
+            gui, report, theme, width = dialog.findChildren(QComboBox)
+            self.assertEqual((gui.currentData(), report.currentData(), theme.currentData(),
+                              width.currentData()), ("en", "gui", "system", "2"))
             gui.setCurrentIndex(gui.findData("vi"))
             report.setCurrentIndex(report.findData("en"))
             theme.setCurrentIndex(theme.findData("dark"))
+            width.setCurrentIndex(width.findData("3"))
             return QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
 
         with patch.object(QDialog, "exec", new=lambda dialog: choose(dialog, False)):
@@ -262,6 +263,7 @@ class GuiInputTests(unittest.TestCase):
         self.assertEqual(self.settings.value("gui_language"), "vi")
         self.assertEqual(self.settings.value("report_language"), "en")
         self.assertEqual(self.settings.value("theme"), "dark")
+        self.assertEqual(self.settings.value("graph/line_width", type=int), 3)
         self.assertEqual(app_theme.manager.theme.name, "dark")
         self.assertIn(app_theme.DARK.window, self.app.styleSheet())
 
@@ -279,6 +281,8 @@ class GuiInputTests(unittest.TestCase):
                 show.assert_called_once_with("Release note", visible)
 
     def test_dark_system_palette_does_not_leak_into_workspace(self):
+        from can_toolbox.ui import theme as app_theme
+
         previous_palette = self.app.palette()
         previous_style = self.app.style().objectName()
         previous_sheet = self.app.styleSheet()
@@ -303,7 +307,7 @@ class GuiInputTests(unittest.TestCase):
                 scroll = self.tab.findChild(QScrollArea, "workspaceScroll")
                 self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
                 pixel = scroll.viewport().grab().toImage().pixelColor(0, 0)
-                self.assertEqual(pixel.name(), "#f4f6fb")
+                self.assertEqual(pixel.name(), app_theme.LIGHT.window)
                 for card in scroll.findChildren(QGroupBox, "sectionCard"):
                     title = card.findChild(QLabel, "sectionTitle")
                     self.assertTrue(card.rect().contains(title.geometry()))

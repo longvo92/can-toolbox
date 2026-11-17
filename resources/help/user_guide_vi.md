@@ -1,12 +1,13 @@
 # Hướng dẫn sử dụng
 
-Cửa sổ chính là Log Viewer. Menu **Công cụ** mở So sánh DBC trong cửa sổ riêng, còn
-**Cài đặt → Cài đặt…** gồm ngôn ngữ, chủ đề (theo Windows, Sáng hoặc Tối) và đường dẫn MATLAB.
+Cửa sổ chính là Log Viewer. Menu **File** gom mọi thao tác với log đang mở, **Công cụ** mở
+So sánh DBC trong cửa sổ riêng, còn **Cài đặt → Cài đặt…** gồm ngôn ngữ, chủ đề (theo Windows,
+Sáng hoặc Tối), độ dày đường đồ thị và đường dẫn MATLAB.
 
 ## Log Viewer
 
-1. Chọn **Mở log…** hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào cửa sổ. Log lớn đọc ở luồng nền; **Hủy** dừng việc đọc.
-2. Chọn **File DBC…** để thêm database và gán cho **Mọi channel** hoặc một channel CAN. DBC gán theo channel được ưu tiên; kéo thả file `.dbc` sẽ thêm cho mọi channel.
+1. Chọn **File → Mở log…** (Ctrl+O) hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào cửa sổ. Log lớn đọc ở luồng nền; **Hủy** dừng việc đọc. **File → Log gần đây** mở lại tám log gần nhất, **Nạp lại** (F5) đọc lại log hiện tại.
+2. Chọn **File → File DBC…** để thêm database và gán cho **Mọi channel** hoặc một channel CAN. DBC gán theo channel được ưu tiên; kéo thả file `.dbc` sẽ thêm cho mọi channel.
 3. Trace liệt kê từng frame: thời gian, channel, ID (ID extended kết thúc bằng `x` như CANoe), tên message, hướng, loại, DLC và dữ liệu. Error frame hiển thị màu đỏ.
 4. Chọn một frame để xem signal đã decode trong **Giá trị signal**: giá trị vật lý hoặc text theo value table, giá trị raw và đơn vị.
 5. Menu **Hiển thị** bật lại các panel không có trong màn hình mặc định: thanh lọc, **Danh sách signal**, **Giá trị signal**, **Thống kê** và **Thông tin log**. Nhấp chuột phải vào trace để mở một panel thành cửa sổ riêng, vẽ mọi signal của message, hoặc đưa cursor tới frame đang chọn. Kéo panel trở lại cửa sổ để dock; bố cục được nhớ cho lần sau.
@@ -20,17 +21,20 @@ Mở **Hiển thị → Danh sách signal**, gõ vào ô **Tìm signal**, rồi 
 thả vào đồ thị, hoặc chọn nhiều signal và bấm **Thêm vào đồ thị**. Mỗi signal có một plot
 riêng trên cùng trục thời gian và giữ giá trị cho tới frame kế tiếp.
 
-| Toolbar | Tác dụng |
+Đồ thị có toolbar riêng:
+
+| Nút | Tác dụng |
 |---|---|
-| **Vừa khung** | Trục X theo toàn bộ log, rồi chỉnh trục Y mọi plot theo khoảng đó |
-| **Vừa trục X** | Trục thời gian phủ toàn bộ log, bất kể signal đang vẽ tới đâu |
-| **Vừa trục Y** | Chỉnh trục Y mọi plot theo khoảng thời gian đang xem |
+| **Vừa khung ▾** | Trục X theo toàn bộ log, rồi chỉnh trục Y mọi plot theo khoảng đó; menu có **Vừa trục X** và **Vừa trục Y** |
 | **Phóng to / Thu nhỏ** | Co giãn trục thời gian quanh cursor 1 |
 | **Cursor 1 / Cursor 2** | Hiện cursor chính và cursor đo |
+| **◀ / ▶** | Đưa cursor 1 tới lần đổi giá trị trước hoặc sau của signal đang chọn |
+| **Bỏ plot / Xóa đồ thị** | Gỡ plot đang chọn, hoặc gỡ tất cả |
+| **Ảnh ▾** | Lưu đồ thị thành file PNG, hoặc chép vào clipboard |
 
-Di chuyển cursor sẽ chọn frame tương ứng trong trace và ngược lại. Khi bật **Cursor 2**,
-bảng readout hiện giá trị tại hai cursor, chênh lệch và Δt. **Bỏ plot** và **Xóa đồ thị**
-gỡ các plot.
+Tên signal nằm trên trục trái của từng plot, theo màu đường vẽ; tooltip hiện tên đầy đủ và
+đơn vị. Di chuyển cursor sẽ chọn frame tương ứng trong trace và ngược lại. Khi bật
+**Cursor 2**, bảng readout hiện giá trị tại hai cursor, chênh lệch và Δt ở cuối toolbar.
 
 ### Workspace
 

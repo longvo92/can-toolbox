@@ -10,8 +10,17 @@ for the procedure.
 
 ## [Unreleased]
 
+### Added
+
+- **File → Recent Logs** reopens any of the last eight logs you had open.
+- The graph has its own toolbar: Fit (with Fit X and Fit Y in its menu), zoom, both cursors, **◀ / ▶** to step cursor 1 through the value changes of the selected signal, remove or clear plots, and **Image** to save the plots as a PNG or copy them to the clipboard. Δt sits at the end of it.
+- **Settings → Line width** sets how thick the curves are drawn, from 1 to 4 px.
+
 ### Changed
 
+- The window lost its toolbar: opening logs, DBCs, workspaces and Export are in **File**, and everything about the graph is on the graph.
+- Plots are shorter and name their signal on the left axis, in the colour of the curve, with a rule between lanes — so more signals fit on screen.
+- New light and dark palettes: a flat instrument grey in light, editor greys in dark, with crisper toolbars and plot backgrounds.
 - The Excel report is titled **DBC Comparison Report**; the comparison is also published as its own app, [dbc-compare-tool](https://github.com/longvo92/dbc-compare-tool), and the report no longer names the toolbox it ran from.
 
 ## [2.0.0] - 2026-11-17
