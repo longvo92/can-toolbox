@@ -6,10 +6,9 @@ from functools import partial
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
-    QLabel,
     QMessageBox,
     QTextBrowser,
     QVBoxLayout,
@@ -21,8 +20,10 @@ from can_toolbox.app_paths import changelog_path, resource_path
 from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.ui.logview.window import LogViewerWindow
+from can_toolbox.ui.settings_dialog import migrate_tool_settings, open_settings, theme_mode
+from can_toolbox.ui.theme import configure_appearance
 from can_toolbox.ui.tool_windows import ToolWindow
-from can_toolbox.ui.widgets import NoWheelComboBox, dialog_buttons
+from can_toolbox.ui.widgets import dialog_buttons
 
 
 def _read_resource_text(filename: str) -> str:
@@ -81,7 +82,11 @@ class MainWindow(LogViewerWindow):
         """
         store = settings if settings is not None else QSettings("CanToolbox", "CANToolbox")
         migrate_legacy_settings(store, legacy if legacy is not None else _legacy_settings())
+        migrate_tool_settings(store)
         super().__init__(store, gui_language=_language_preference(store, "gui_language", LANGUAGES, "en"))
+        application = QApplication.instance()
+        if application is not None:
+            configure_appearance(application, theme_mode(store))
 
     # -- shell menus ---------------------------------------------------------------
 
@@ -103,9 +108,9 @@ class MainWindow(LogViewerWindow):
 
         self.settings_menu = self.menuBar().addMenu("")
         self._binder.bind(self.settings_menu.setTitle, "Settings")
-        self.language_action = self.settings_menu.addAction("")
-        self._binder.bind(self.language_action.setText, "Language…")
-        self.language_action.triggered.connect(self._show_language_settings)
+        self.settings_action = self.settings_menu.addAction("")
+        self._binder.bind(self.settings_action.setText, "Settings…")
+        self.settings_action.triggered.connect(self._show_settings)
 
         help_menu = self.menuBar().addMenu("")
         self._binder.bind(help_menu.setTitle, "Help")
@@ -183,7 +188,7 @@ class MainWindow(LogViewerWindow):
             self._busy_tools.discard(owner)
         idle = not self._busy_tools
         self.settings_menu.setEnabled(idle)
-        self.language_action.setEnabled(idle)
+        self.settings_action.setEnabled(idle)
 
     def busy_widgets(self) -> list[QWidget]:
         running: list[QWidget] = [self] if self.is_busy() else []
@@ -198,44 +203,12 @@ class MainWindow(LogViewerWindow):
         self._settings.setValue("report_language", report_language)
         self.set_gui_language(gui_language)
 
-    def _show_language_settings(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle(self._tr("Language"))
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(14)
-        form = QFormLayout()
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(10)
-        combos = []
-        for key, current, follow_gui in (
-            ("GUI Language", self.gui_language, False),
-            ("Report Language", self._report_language, True),
-        ):
-            combo = NoWheelComboBox(dialog)
-            if follow_gui:
-                combo.addItem(self._tr("Follow GUI"), "gui")
-            combo.addItem("English", "en")
-            combo.addItem("Tiếng Việt", "vi")
-            combo.setCurrentIndex(combo.findData(current))
-            label = QLabel(self._tr(key))
-            label.setBuddy(combo)
-            combo.setAccessibleName(label.text())
-            form.addRow(label, combo)
-            combos.append(combo)
-        layout.addLayout(form)
-
-        buttons = dialog_buttons(
-            self.gui_language, QDialogButtonBox.StandardButton.Save, QDialogButtonBox.StandardButton.Cancel,
+    def _show_settings(self) -> None:
+        open_settings(
+            self, self._binder, self._settings,
+            gui_language=self.gui_language, report_language=self._report_language,
+            apply=self._set_languages,
         )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        try:
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                self._set_languages(combos[0].currentData(), combos[1].currentData())
-        finally:
-            dialog.deleteLater()
 
     # -- shutdown ------------------------------------------------------------------
 

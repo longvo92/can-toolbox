@@ -31,7 +31,7 @@ else:
     )
     from can_toolbox.ui.ecu_focus import EcuFocusDialog
     from can_toolbox.ui.main_window import COMPARE_TOOL, MainWindow
-    from can_toolbox.ui.style import configure_appearance
+    from can_toolbox.ui.theme import configure_appearance
 
 
 pytestmark = pytest.mark.gui
@@ -227,33 +227,43 @@ class GuiInputTests(unittest.TestCase):
                     self.assertNotEqual(row[f"Old {entity} Name"], row[f"New {entity} Name"])
         self.assertEqual(kinds, {"Added", "Removed", "Modified", "Renamed"})
 
-    def test_language_dialog_is_in_settings_before_help_and_respects_cancel(self):
+    def test_settings_dialog_holds_language_and_theme_and_respects_cancel(self):
+        from can_toolbox.ui import theme as app_theme
+
         self.assertEqual([action.text() for action in self.window.menuBar().actions()],
                          ["File", "View", "Tools", "Settings", "Help"])
         action, = self.window.settings_menu.actions()
-        self.assertEqual(action.text(), "Language…")
+        self.assertEqual(action.text(), "Settings…")
         self.assertEqual(self.tab.findChildren(QComboBox), [self.tab.input_mode])
+        self.addCleanup(app_theme.configure_appearance, self.app, "light")
 
-        def choose_languages(dialog, accepted):
-            self.assertEqual(dialog.windowTitle(), "Language")
-            gui, report = dialog.findChildren(QComboBox)
-            self.assertEqual((gui.currentData(), report.currentData()), ("en", "gui"))
+        def choose(dialog, accepted):
+            self.assertEqual(dialog.windowTitle(), "Settings")
+            gui, report, theme = dialog.findChildren(QComboBox)
+            self.assertEqual((gui.currentData(), report.currentData(), theme.currentData()),
+                             ("en", "gui", "system"))
             gui.setCurrentIndex(gui.findData("vi"))
             report.setCurrentIndex(report.findData("en"))
+            theme.setCurrentIndex(theme.findData("dark"))
             return QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
 
-        with patch.object(QDialog, "exec", new=lambda dialog: choose_languages(dialog, False)):
+        with patch.object(QDialog, "exec", new=lambda dialog: choose(dialog, False)):
             action.trigger()
         self.assertEqual(self.tab.run_button.text(), "Run Compare")
         self.assertIsNone(self.settings.value("gui_language"))
-        with patch.object(QDialog, "exec", new=lambda dialog: choose_languages(dialog, True)):
+        self.assertEqual(app_theme.manager.theme.name, "light")
+
+        with patch.object(QDialog, "exec", new=lambda dialog: choose(dialog, True)):
             action.trigger()
         self.assertEqual([item.text() for item in self.window.menuBar().actions()],
                          ["File", "Hiển thị", "Công cụ", "Cài đặt", "Trợ giúp"])
-        self.assertEqual(action.text(), "Ngôn ngữ…")
+        self.assertEqual(action.text(), "Cài đặt…")
         self.assertEqual(self.tab.run_button.text(), "Chạy so sánh")
         self.assertEqual(self.settings.value("gui_language"), "vi")
         self.assertEqual(self.settings.value("report_language"), "en")
+        self.assertEqual(self.settings.value("theme"), "dark")
+        self.assertEqual(app_theme.manager.theme.name, "dark")
+        self.assertIn(app_theme.DARK.window, self.app.styleSheet())
 
     def test_release_note_menu_hides_development_notes(self):
         help_menu = self.window.menuBar().actions()[-1].menu()
@@ -321,7 +331,7 @@ class GuiInputTests(unittest.TestCase):
                 output = self.root / f"{gui}_{report}.xlsx"
                 self.tab.output_input.setText(str(output))
                 self.tab._run_compare()
-                self.assertFalse(self.window.language_action.isEnabled())
+                self.assertFalse(self.window.settings_action.isEnabled())
                 self._wait_until(lambda: self.tab.run_button.isEnabled())
                 workbook = load_workbook(output)
                 try:
@@ -345,7 +355,7 @@ class GuiInputTests(unittest.TestCase):
         self.new.write_text(self.new.read_text(encoding="utf-8").replace("(1,0)", "(2,0)"), encoding="utf-8")
 
         def choose_receiver(dialog):
-            self.assertFalse(self.window.language_action.isEnabled())
+            self.assertFalse(self.window.settings_action.isEnabled())
             items = [dialog.nodes.item(index) for index in range(dialog.nodes.count())]
             self.assertTrue(any("OLD OldNode → NEW NewNode" in item.text() for item in items))
             dialog._search("receiver")

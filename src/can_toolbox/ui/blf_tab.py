@@ -37,9 +37,9 @@ from can_toolbox.blf_mat.options import (
     build_selected_paths,
     default_config_path,
     default_output_folder,
-    find_matlab_executable,
 )
 from can_toolbox.i18n import translate
+from can_toolbox.ui.settings_dialog import matlab_executable
 from can_toolbox.ui.widgets import DropLineEdit, NoWheelComboBox, TextBinder, dialog_buttons, scrollable, section
 
 _SETTINGS_PREFIX = "blf/"
@@ -101,28 +101,6 @@ class ConvertWorker(QThread):
             return
         batcher.flush()
         self.converted.emit(self.paths)
-
-
-class EnvironmentWorker(QThread):
-    log = Signal(list)
-    finished_check = Signal(int)
-
-    def __init__(self, matlab: str, *, require_matlab: bool) -> None:
-        super().__init__()
-        self.matlab = matlab
-        self.require_matlab = require_matlab
-
-    def run(self) -> None:
-        from can_toolbox.blf_mat.checks import check_environment
-
-        batcher = _LineBatcher(self.log.emit)
-        try:
-            status = check_environment(self.matlab or None, batcher, require_matlab=self.require_matlab)
-        except Exception as exc:
-            batcher(f"[FAIL] Environment check: {exc}")
-            status = 1
-        batcher.flush()
-        self.finished_check.emit(status)
 
 
 class SheetPickerDialog(QDialog):
@@ -202,7 +180,6 @@ class BlfTab(QWidget):
         self._status = ("Ready to convert", {})
         self._sheets: dict[str, tuple[str, ...]] = {"input": (), "output": ()}
         self.worker: ConvertWorker | None = None
-        self.check_worker: EnvironmentWorker | None = None
         self.last_output: Path | None = None
 
         self.blf_input = DropLineEdit()
@@ -212,7 +189,6 @@ class BlfTab(QWidget):
         self.output_schema_input = DropLineEdit()
         self.config_input = DropLineEdit()
         self.output_input = DropLineEdit()
-        self.matlab_input = DropLineEdit()
         self.column_inputs = {name: QLineEdit() for name, _ in _COLUMNS}
         self.header_row_input = QLineEdit()
         self.header_row_input.setValidator(QIntValidator(1, 1_048_576, self))
@@ -223,9 +199,7 @@ class BlfTab(QWidget):
         self.sheets_hint = QLabel()
         self.sheets_hint.setObjectName("hintLabel")
         self.sheets_hint.setWordWrap(True)
-        self.detect_matlab_button = self._text_widget(QPushButton, "Detect")
         self.convert_button = self._text_widget(QPushButton, "Convert")
-        self.check_button = self._text_widget(QPushButton, "Check Environment")
         self.open_button = self._text_widget(QPushButton, "Open Output Folder")
         self.progress = QProgressBar()
         self.log_view = QTextEdit()
@@ -240,7 +214,6 @@ class BlfTab(QWidget):
             (self.output_schema_input, False, (".txt",), "Optional: Interface.Element : datatype"),
             (self.config_input, False, (".yaml", ".yml"), ""),
             (self.output_input, True, (), ""),
-            (self.matlab_input, False, (".exe", ""), "Detected automatically when blank"),
         )
 
         self._build_layout()
@@ -274,7 +247,7 @@ class BlfTab(QWidget):
                 worker.wait(timeout_ms)
 
     def _workers(self) -> tuple[QThread | None, ...]:
-        return (self.worker, self.check_worker)
+        return (self.worker,)
 
     # -- i18n ----------------------------------------------------------------------
 
@@ -411,19 +384,12 @@ class BlfTab(QWidget):
             output_form, 1, "Output folder (optional)", self.output_input,
             browse("Browse", "Browse output folder", partial(self._choose_folder, self.output_input)),
         )
-        self._matlab_browse = browse(
-            "Browse", "Browse MATLAB executable",
-            partial(self._choose_file, self.matlab_input, "MATLAB (matlab.exe);;All files (*)"),
-        )
-        self._path_row(output_form, 2, "MATLAB executable", self.matlab_input, self._matlab_browse,
-                       self.detect_matlab_button)
         format_hint = self._text_widget(
-            QLabel, "MAT needs no MATLAB. Simulink Dataset runs MATLAB once to package every log."
+            QLabel, "MAT needs no MATLAB. Simulink Dataset runs the MATLAB from Settings once per run."
         )
         format_hint.setObjectName("hintLabel")
         format_hint.setWordWrap(True)
-        output_form.addWidget(format_hint, 3, 0, 1, 4)
-        self._binder.bind(self.detect_matlab_button.setToolTip, "Find MATLAB on PATH or in the usual install folders.")
+        output_form.addWidget(format_hint, 2, 0, 1, 4)
 
         self.convert_button.setObjectName("primaryButton")
         self._binder.bind(
@@ -433,7 +399,6 @@ class BlfTab(QWidget):
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addWidget(self.run_status, 1)
-        buttons.addWidget(self.check_button)
         buttons.addWidget(self.open_button)
         buttons.addWidget(self.convert_button)
 
@@ -469,10 +434,8 @@ class BlfTab(QWidget):
 
     def _wire_events(self) -> None:
         self.convert_button.clicked.connect(self._start_conversion)
-        self.check_button.clicked.connect(self._check_environment)
         self.open_button.clicked.connect(self._open_output)
         self.sheets_button.clicked.connect(self._select_sheets)
-        self.detect_matlab_button.clicked.connect(self._detect_matlab)
         self.format_input.currentIndexChanged.connect(self._update_enabled_controls)
         self.excel_input.textChanged.connect(self._on_excel_changed)
         self.blf_input.textChanged.connect(self._update_automatic_hints)
@@ -492,9 +455,7 @@ class BlfTab(QWidget):
         excel = idle and bool(self.excel_input.text().strip())
         for widget in (self.sheets_button, *self.column_inputs.values(), self.header_row_input, *self._excel_labels):
             widget.setEnabled(excel)
-        dataset = idle and self._dataset()
-        for widget in (self.matlab_input, self.detect_matlab_button, self._matlab_browse):
-            widget.setEnabled(dataset)
+
 
     def _update_sheet_hint(self) -> None:
         parts = [
@@ -523,7 +484,7 @@ class BlfTab(QWidget):
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         for widget in (
-            self.convert_button, self.check_button, self.format_input, self.blf_input, self.dbc_input,
+            self.convert_button, self.format_input, self.blf_input, self.dbc_input,
             self.excel_input, self.input_schema_input, self.output_schema_input, self.config_input,
             self.output_input, *self._browse_buttons,
         ):
@@ -564,12 +525,6 @@ class BlfTab(QWidget):
             self._sheets = dialog.selected_sheets()
             self._update_sheet_hint()
 
-    def _detect_matlab(self) -> None:
-        try:
-            self.matlab_input.setText(str(find_matlab_executable()))
-        except OptionError as exc:
-            QMessageBox.warning(self, self._tr("MATLAB Not Found"), str(exc))
-
     # -- conversion ----------------------------------------------------------------
 
     def _options(self) -> ConversionOptions:
@@ -582,7 +537,7 @@ class BlfTab(QWidget):
             output_schema=self.output_schema_input.text().strip(),
             output_folder=self.output_input.text().strip(),
             config=self.config_input.text().strip(),
-            matlab=self.matlab_input.text().strip() if self._dataset() else "",
+            matlab=matlab_executable(self._settings) if self._dataset() else "",
             output_format=self.format_input.currentData(),
             input_sheets=self._sheets["input"],
             output_sheets=self._sheets["output"],
@@ -631,22 +586,6 @@ class BlfTab(QWidget):
         self._log(f"Failed: {message}")
         QMessageBox.critical(self, self._tr("Conversion Failed"), message)
 
-    def _check_environment(self) -> None:
-        self.log_view.clear()
-        self.progress.setRange(0, 0)
-        self.progress.show()
-        self._set_status("Checking environment…")
-        self._set_actions_enabled(False)
-        self.check_worker = EnvironmentWorker(self.matlab_input.text().strip(), require_matlab=self._dataset())
-        self.check_worker.log.connect(self._log_lines)
-        self.check_worker.finished_check.connect(self._checked)
-        self.check_worker.start()
-
-    def _checked(self, status: int) -> None:
-        self._finish()
-        self.open_button.setEnabled(self.last_output is not None)
-        self._set_status("Environment ready" if status == 0 else "Environment problems found — see log")
-
     def _open_output(self) -> None:
         if self.last_output and self.last_output.is_dir():
             os.startfile(self.last_output)
@@ -668,7 +607,7 @@ class BlfTab(QWidget):
         return {
             "blf": self.blf_input, "dbc": self.dbc_input, "excel": self.excel_input,
             "input_schema": self.input_schema_input, "output_schema": self.output_schema_input,
-            "config": self.config_input, "output_folder": self.output_input, "matlab": self.matlab_input,
+            "config": self.config_input, "output_folder": self.output_input,
             "header_row": self.header_row_input, **self.column_inputs,
         }
 

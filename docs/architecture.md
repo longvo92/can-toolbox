@@ -28,7 +28,9 @@ CAN Toolbox is a GUI-only PySide6 app. The application window is the log viewer;
 | `ui/main_window.py` | Shell on top of the viewer: Tools/Settings/Help menus, settings migration, language propagation, close guard |
 | `ui/tool_windows.py` | `ToolWindow`: one tool widget in its own window, geometry remembered per tool |
 | `ui/compare_tab.py`, `ui/blf_tab.py` | One widget per tool with its own workers, progress and status, hosted by a `ToolWindow`; `ui/graphics.py` holds the pyqtgraph signal list and the graph panel that is the viewer's central widget |
-| `ui/widgets.py`, `ui/style.py`, `ui/app.py` | Shared widgets and text binding, theme, entry point |
+| `ui/theme.py` | `Theme` tokens, the stylesheet template they fill, the palette, SVG tinting and the light/dark switch (`ThemeManager`) |
+| `ui/settings_dialog.py` | Language, theme and MATLAB in one dialog, plus the `matlab/executable` migration and the environment check |
+| `ui/widgets.py`, `ui/app.py` | Shared widgets and text binding, entry point |
 
 A tool widget exposes `title_key`, `subtitle_key`, `busy_changed`, `set_languages`, `is_busy`, `stop_workers` and `wait_for_workers`; `ToolWindow` turns those into a window title, subtitle and geometry. The shell disables language changes while any tool runs and asks before quitting while a worker runs. `MainWindow(settings=None, legacy=None)` takes both stores so a test never touches the installed app's preferences. Settings live in `QSettings("CanToolbox", "CANToolbox")`: languages at the top level, tool inputs under `compare/`, `blf/` and `logview/` (last log, DBC assignments as JSON), window geometry and dock layout under `window/` and each tool window's geometry under `tools/`. On first start `migrate_legacy_settings` copies the DBC Compare Tool 0.8.0 keys from `QSettings("DbcCompareTool", "DBCCompareTool")` without overwriting newer values or touching the old store.
 
@@ -60,7 +62,11 @@ The `classic-v067` pipeline matches same-relative-path files first, then conside
 
 Without definitions a BLF becomes a `Frames` struct. With a DBC, signals are decoded per message. TXT schemas, Excel sheets and YAML `input_mappings`/`input_forces` select interfaces; only signals feeding a selected interface are decoded. Each signal passes CAN decode, `status_mapping`, the AST-validated `formula` and a MATLAB-like datatype cast. Duplicate timestamps keep the last value; input signals from Excel or TXT get a zero sample at time 0. Excel sheets are read by `mapping.Workbook`, an openpyxl grid that reproduces the former pandas reader (trimmed blanks, NA texts as blank, integral floats as int). The Dataset format writes raw MAT files, generates one MATLAB script and runs `matlab -batch` once without a console window.
 
-Engine log text stays English in both tabs; the GUI chrome and the Excel report are localized.
+Engine log text stays English in every tool; the GUI chrome and the Excel report are localized.
+
+## Theme
+
+`ui/theme.py` is the only module that names a colour. `Theme` holds the tokens; `LIGHT` and `DARK` fill them, and `stylesheet(theme)` substitutes them into one `string.Template` (`$token`, so CSS braces stay untouched). `configure_appearance(app, mode)` sets the Fusion palette and the stylesheet, where `mode` is `system`, `light` or `dark`; `system` follows `QStyleHints.colorScheme()` and re-applies on `colorSchemeChanged`. Widgets that paint themselves — the trace's error and remote rows, and `GraphPanel`'s background, axes, curves and cursors — read `current_theme()` or connect to `manager.changed`. Bundled SVG indicators are recoloured per theme into the temp folder, because Qt stylesheets can only point at files. `tests/test_theme.py` fails on a hex colour anywhere else under `ui/`.
 
 ## Verification
 
