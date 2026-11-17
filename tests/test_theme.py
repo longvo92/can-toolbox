@@ -185,3 +185,53 @@ def test_matlab_setting_moves_out_of_the_blf_tool(tmp_path):
     assert theme_mode(settings) == "dark"
     settings.setValue("theme", "neon")
     assert theme_mode(settings) == "system"
+
+
+def test_a_configured_matlab_path_has_to_resolve(app, tmp_path):
+    """With a path the user typed, Check Environment must fail when it is wrong."""
+    from can_toolbox.ui.settings_dialog import SettingsDialog
+    from can_toolbox.ui.widgets import TextBinder
+
+    dialog = SettingsDialog(None, TextBinder("en"), gui_language="en", report_language="gui",
+                            mode="light", matlab="")
+    try:
+        dialog._check_environment()
+        assert dialog.worker.require_matlab is False
+        dialog.wait_for_workers()
+        dialog.matlab_input.setText(str(tmp_path / "nowhere" / "matlab.exe"))
+        dialog._check_environment()
+        assert dialog.worker.require_matlab is True
+        dialog.wait_for_workers()
+        app.processEvents()
+        assert "problems" in dialog.status_label.text()
+    finally:
+        dialog.done(0)
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_closing_settings_leaves_a_running_check_alive(app, monkeypatch):
+    """Deleting a running QThread aborts the process, so the worker outlives the dialog."""
+    import time
+
+    from can_toolbox.ui import settings_dialog as module
+    from can_toolbox.ui.widgets import TextBinder
+
+    def slow_check(matlab, emit, require_matlab=False):
+        time.sleep(0.3)
+        emit("[OK] slow")
+        return 0
+
+    monkeypatch.setattr("can_toolbox.blf_mat.checks.check_environment", slow_check)
+    dialog = module.SettingsDialog(None, TextBinder("en"), gui_language="en", report_language="gui",
+                                   mode="light", matlab="")
+    dialog._check_environment()
+    worker = dialog.worker
+    assert worker in module._RUNNING
+    dialog.done(0)
+    dialog.deleteLater()
+    app.processEvents()
+    assert worker.isRunning() or worker.isFinished()
+    worker.wait(5000)
+    app.processEvents()
+    assert worker not in module._RUNNING

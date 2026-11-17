@@ -528,3 +528,24 @@ def test_window_layout_is_remembered(app, settings, legacy):
         second.close()
         second.deleteLater()
         app.processEvents()
+
+
+def test_a_docked_panel_stays_docked_when_it_is_reopened(window):
+    """Only a panel the user has never placed opens as its own window."""
+    window.show()
+    panel = window.open_panel(window.statistics_dock)
+    assert panel.isFloating()
+    panel.setFloating(False)
+    panel.hide()
+    window.open_panel(window.statistics_dock)
+    assert not panel.isHidden() and not panel.isFloating()
+    window.hide()
+
+
+def test_a_workspace_cannot_be_saved_while_a_log_is_loading(window, log_files):
+    _load(window, log_files[0])
+    assert window.save_workspace_action.isEnabled()
+    window.open_log(str(log_files[0]))
+    assert window.is_busy() and not window.save_workspace_action.isEnabled()
+    # The action comes back with the rest of the controls, once the load reports in.
+    wait_until(lambda: not window.is_busy() and window.save_workspace_action.isEnabled())

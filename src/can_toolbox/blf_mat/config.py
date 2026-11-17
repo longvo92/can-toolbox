@@ -38,7 +38,7 @@ DEFAULT_DTYPE = "double"
 
 _TARGET_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.*)$")
 _OPTION_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$")
-_SECTION_RE = re.compile(r"^\[\s*(input|output)\s*\]$", re.IGNORECASE)
+_SECTION_RE = re.compile(r"^\[\s*(input|output|options)\s*\]$", re.IGNORECASE)
 
 
 class ConfigError(ValueError):
@@ -302,17 +302,30 @@ def parse_txt(text: str, source: Path | None = None) -> dict[str, Any]:
             continue
         section = _SECTION_RE.match(line.strip())
         if section:
-            side, current = section.group(1).lower(), None
+            name = section.group(1).lower()
+            if name == "options":
+                side, current = name, None
+                continue
+            side, current = name, None
             continue
         option = _OPTION_RE.match(line.strip()) if line[:1].isspace() else None
         if option:
+            key, value = option.group(1).lower(), option.group(2).strip()
+            if side == "options":
+                if key != "excel_skip_keywords":
+                    raise ConfigError(f"{where}:{number}: unknown option {key!r} in [options].")
+                document["excel_skip_keywords"] = [
+                    word.strip() for word in value.split(",") if word.strip()
+                ]
+                continue
             if current is None:
                 raise ConfigError(f"{where}:{number}: '{line.strip()}' does not belong to an element.")
-            key, value = option.group(1).lower(), option.group(2).strip()
             if key not in {"can_signal", "formula", "status_mapping", "value", "enabled"}:
                 raise ConfigError(f"{where}:{number}: unknown option {key!r}.")
             current[key] = _txt_value(key, value, f"{where}:{number}")
             continue
+        if side == "options":
+            raise ConfigError(f"{where}:{number}: [options] holds settings, not elements.")
         target = _TARGET_RE.match(line.strip())
         if not target:
             raise ConfigError(
@@ -441,6 +454,9 @@ def write_config(path: Path, config: MappingConfig) -> Path:
 
 def _txt_text(document: dict[str, Any]) -> str:
     lines = ["# CAN Toolbox mapping, schema version 2"]
+    if document.get("excel_skip_keywords"):
+        lines.append("[options]")
+        lines.append("    excel_skip_keywords = " + ", ".join(document["excel_skip_keywords"]))
     for side in SIDES:
         buses = [bus for bus in document.get("interfaces", []) if bus["side"] == side]
         if not buses:

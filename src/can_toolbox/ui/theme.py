@@ -444,20 +444,9 @@ QMenu::separator {
     background: $border_soft;
     margin: 4px 8px;
 }
+/* Radio buttons keep the Fusion indicator: it follows the palette in both themes,
+   and a stylesheet one cannot draw the inner dot without an image. */
 QRadioButton { spacing: 6px; }
-QRadioButton::indicator {
-    width: 14px;
-    height: 14px;
-    border: 1px solid $disabled_soft;
-    border-radius: 8px;
-    background: $surface;
-}
-QRadioButton::indicator:hover { border-color: $accent; background: $accent_tint; }
-QRadioButton::indicator:checked {
-    border: 4px solid $accent_strong;
-    background: $surface;
-}
-QRadioButton::indicator:disabled { border-color: $check_disabled; background: $field_disabled_bg; }
 QStatusBar::item { border: none; }
 QStatusBar QLabel { color: $subtle; }
 QDockWidget::close-button, QDockWidget::float-button {

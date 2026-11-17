@@ -392,7 +392,7 @@ class LogViewerWindow(QMainWindow):
         self.dbc_action.setEnabled(not busy)
         self.export_action.setEnabled(loaded and not busy)
         self.open_workspace_action.setEnabled(not busy)
-        self.save_workspace_action.setEnabled(loaded)
+        self.save_workspace_action.setEnabled(loaded and not busy)
         self.workspace_button.setEnabled(not busy)
         self.filters.set_controls_enabled(loaded and not busy)
         self.signal_browser.set_controls_enabled(loaded and not busy)
@@ -437,9 +437,12 @@ class LogViewerWindow(QMainWindow):
         A panel the user has docked stays docked; only a hidden one floats.
         """
         if dock.isHidden():
-            dock.setFloating(True)
-            dock.resize(640, 360)
-            dock.move(self.geometry().center() - dock.rect().center())
+            if not dock.property("openedBefore"):
+                # First time: a panel the user has never placed opens as a window.
+                dock.setFloating(True)
+                dock.resize(640, 360)
+                dock.move(self.geometry().center() - dock.rect().center())
+            dock.setProperty("openedBefore", True)
             dock.show()
         dock.raise_()
         dock.activateWindow()
