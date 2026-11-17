@@ -47,6 +47,8 @@ SHELL_VI = {
     "No group": "Không thuộc nhóm",
     "Ctrl+click plot mode": "Chế độ vẽ theo lựa chọn",
     "Expand All": "Mở hết",
+    "Expanding {count} rows can take a while. Continue?":
+        "Mở hết {count} dòng có thể mất thời gian. Tiếp tục?",
     "Collapse All": "Thu hết",
     "Message": "Message",
     "Pick signals from the open log and add them to the graph.":

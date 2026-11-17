@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QSplitter,
-    QToolBar,
-    QTreeWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -28,30 +28,38 @@ from can_toolbox.canlog.workspace import PlottedSignal, SignalGroup
 from can_toolbox.ui.logview.dialogs import LOG_FILTER, LOG_SUFFIXES, WORKSPACE_FILTER, DbcDialog
 from can_toolbox.ui.logview.export_dialog import ExportDialog
 from can_toolbox.ui.logview.panels import (
-    SIGNAL_VALUE_COLUMNS,
     STATISTICS_COLUMNS,
     FilterBar,
     SignalBrowser,
     build_info_view,
-    build_signal_values,
     build_statistics_table,
     build_trace_view,
     fill_statistics,
+    wrap_filter_bar,
 )
 from can_toolbox.ui.logview.signal_panel import SignalPanel
 from can_toolbox.ui.logview.signal_set import SignalSet
 from can_toolbox.ui.logview.tasks import Task, load_view
-from can_toolbox.ui.logview.trace import COLUMNS, TraceModel, number_text
+from can_toolbox.ui.logview.trace import COLUMNS, TraceModel
 from can_toolbox.ui.theme import icon as themed_icon
 from can_toolbox.ui.theme import manager as theme_manager
 from can_toolbox.ui.tool_windows import ToolWindow
 from can_toolbox.ui.widgets import TextBinder
 
 SETTINGS_PREFIX = "logview/"
-# 3: the main toolbar was removed, so a layout saved with it must not be restored.
-STATE_VERSION = 3
+# 4: the main toolbar, the filter toolbar and the Signal Values dock are gone, so
+# an older saved layout must not be restored.
+STATE_VERSION = 4
 ZOOM_STEP = 1.6
 RECENT_LOGS = 8
+# Expanding more rows than this asks first: every one of them is decoded.
+EXPAND_CONFIRM_ROWS = 100_000
+
+
+def _frame_index(index):
+    """The frame row an index belongs to; a signal row answers for its frame."""
+    parent = index.parent()
+    return parent if parent.isValid() else index
 
 
 def _plotted(entry) -> PlottedSignal:
@@ -104,7 +112,6 @@ class LogViewerWindow(QMainWindow):
         self._build_actions()
         self._build_widgets()
         self._build_docks()
-        self._build_toolbars()
         self._build_status_bar()
         self._build_menus()
         self._build_extra_menus()
@@ -121,7 +128,6 @@ class LogViewerWindow(QMainWindow):
         self.signals = SignalSet(self)
         self.model = TraceModel(self)
         self.trace = build_trace_view(self.model)
-        self.signal_values = build_signal_values()
         self.statistics = build_statistics_table()
         self.info = build_info_view()
         from can_toolbox.ui.settings_dialog import line_width
@@ -144,6 +150,14 @@ class LogViewerWindow(QMainWindow):
         self.graph_splitter.setSizes([360, 900])
         self.setCentralWidget(self.graph_splitter)
 
+        # The filter bar belongs to the trace it filters, not to the window.
+        self.trace_panel = QWidget()
+        trace_layout = QVBoxLayout(self.trace_panel)
+        trace_layout.setContentsMargins(0, 0, 0, 0)
+        trace_layout.setSpacing(0)
+        trace_layout.addWidget(wrap_filter_bar(self.filters))
+        trace_layout.addWidget(self.trace, 1)
+
     def _build_actions(self) -> None:
         self.open_action = self._action("Open Log…", "Ctrl+O", icon="open")
         self.reload_action = self._action("Reload", "F5", icon="reload")
@@ -164,7 +178,6 @@ class LogViewerWindow(QMainWindow):
         self.info_action = self._action("Log Info", icon="info")
         self.signal_search_action = self._action("Signal search…", icon="search")
         self.signal_browser_action = self._action("Signal Browser")
-        self.signal_values_action = self._action("Signal Values")
         self.graph_actions = (self.fit_action, self.fit_x_action, self.fit_y_action,
                               self.zoom_in_action, self.zoom_out_action,
                               self.cursor1_action, self.cursor2_action)
@@ -206,17 +219,15 @@ class LogViewerWindow(QMainWindow):
         self.browser_window = ToolWindow(self, self.signal_browser, self._binder,
                                          settings=self._settings, key="signals")
         self.browser_window.hide()
-        self.trace_dock = self._dock("Trace", self.trace, Qt.DockWidgetArea.BottomDockWidgetArea, "traceDock")
-        self.values_dock = self._dock("Signal Values", self.signal_values,
-                                      Qt.DockWidgetArea.BottomDockWidgetArea, "signalValuesDock")
+        self.trace_dock = self._dock("Trace", self.trace_panel, Qt.DockWidgetArea.BottomDockWidgetArea, "traceDock")
         self.statistics_dock = self._dock("Statistics", self.statistics,
                                           Qt.DockWidgetArea.BottomDockWidgetArea, "statisticsDock")
         self.info_dock = self._dock("Log Info", self.info, Qt.DockWidgetArea.BottomDockWidgetArea, "logInfoDock")
-        for dock in (self.values_dock, self.statistics_dock, self.info_dock):
+        for dock in (self.statistics_dock, self.info_dock):
             self.splitDockWidget(self.trace_dock, dock, Qt.Orientation.Horizontal)
         # A minimal first screen: toolbar, Graphics and Trace. Everything else is
         # one click away in View, or from the trace's own context menu.
-        self.panel_docks = (self.values_dock, self.statistics_dock, self.info_dock)
+        self.panel_docks = (self.statistics_dock, self.info_dock)
         for dock in self.panel_docks:
             dock.hide()
         self._apply_default_dock_sizes()
@@ -228,18 +239,9 @@ class LogViewerWindow(QMainWindow):
         again from :meth:`showEvent` unless a saved layout was restored.
         """
         # resizeDocks accepts docks of one area at a time.
-        self.resizeDocks([self.trace_dock, *self.panel_docks], [660, 340, 340, 340],
+        self.resizeDocks([self.trace_dock, *self.panel_docks], [760, 340, 340],
                          Qt.Orientation.Horizontal)
         self.resizeDocks([self.trace_dock], [320], Qt.Orientation.Vertical)
-
-    def _build_toolbars(self) -> None:
-        """Only the filter bar; the log actions live in File, the graph ones on its toolbar."""
-        self.filter_toolbar = QToolBar(self)
-        self.filter_toolbar.setObjectName("filterToolBar")
-        self._binder.bind(self.filter_toolbar.setWindowTitle, "Filter bar")
-        self.filter_toolbar.addWidget(self.filters)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.filter_toolbar)
-        self.filter_toolbar.hide()
 
     def _build_status_bar(self) -> None:
         self.status_label = QLabel()
@@ -281,8 +283,8 @@ class LogViewerWindow(QMainWindow):
 
         self.view_menu = self.menuBar().addMenu("")
         self._binder.bind(self.view_menu.setTitle, "View")
-        for dock, key in ((self.trace_dock, "Trace"), (self.values_dock, "Signal Values"),
-                          (self.statistics_dock, "Statistics"), (self.info_dock, "Log Info")):
+        for dock, key in ((self.trace_dock, "Trace"), (self.statistics_dock, "Statistics"),
+                          (self.info_dock, "Log Info")):
             action = dock.toggleViewAction()
             self._binder.bind(action.setText, key)
             self.view_menu.addAction(action)
@@ -290,10 +292,7 @@ class LogViewerWindow(QMainWindow):
         self.view_menu.addSeparator()
         for action in self.graph_actions:
             self.view_menu.addAction(action)
-        self.view_menu.addSeparator()
-        filter_action = self.filter_toolbar.toggleViewAction()
-        self._binder.bind(filter_action.setText, "Filter bar")
-        self.view_menu.addAction(filter_action)
+
 
     def _build_extra_menus(self) -> None:
         """Hook: menus the application shell appends after File and View."""
@@ -313,7 +312,7 @@ class LogViewerWindow(QMainWindow):
         self.filters.filter_changed.connect(self._apply_filter)
         self.filters.time_mode_changed.connect(self._apply_time_mode)
         self.filters.find_requested.connect(self._find)
-        self.trace.selectionModel().currentRowChanged.connect(self._show_signals)
+        self.filters.expand_requested.connect(self.expand_trace)
         self.trace.selectionModel().currentRowChanged.connect(self._trace_moved)
         self.trace.customContextMenuRequested.connect(self._show_trace_menu)
         self.statistics_dock.visibilityChanged.connect(lambda _visible: self._refresh_statistics())
@@ -339,7 +338,6 @@ class LogViewerWindow(QMainWindow):
         self.cursor2_action.toggled.connect(self.graph.set_measuring)
         self.statistics_action.triggered.connect(lambda: self.open_panel(self.statistics_dock))
         self.info_action.triggered.connect(lambda: self.open_panel(self.info_dock))
-        self.signal_values_action.triggered.connect(lambda: self.open_panel(self.values_dock))
         self.signal_search_action.triggered.connect(self._open_signal_search)
         theme_manager.changed.connect(lambda _theme: self._update_icons())
 
@@ -362,7 +360,6 @@ class LogViewerWindow(QMainWindow):
         self.filters.update_language()
         self.model.headers = [tr(column) for column in COLUMNS]
         self.model.headerDataChanged.emit(Qt.Orientation.Horizontal, 0, len(COLUMNS) - 1)
-        self.signal_values.setHeaderLabels([tr(column) for column in SIGNAL_VALUE_COLUMNS])
         self.statistics.setHorizontalHeaderLabels([tr(column) for column in STATISTICS_COLUMNS])
         self._update_file_label()
         self.graph.set_languages()
@@ -412,8 +409,7 @@ class LogViewerWindow(QMainWindow):
         for action in self.graph_actions:
             action.setEnabled(loaded and not busy)
         self.signal_panel.setEnabled(loaded and not busy)
-        for action in (self.statistics_action, self.info_action, self.signal_values_action,
-                       self.signal_search_action):
+        for action in (self.statistics_action, self.info_action, self.signal_search_action):
             action.setEnabled(loaded and not busy)
 
     # -- recent logs ---------------------------------------------------------------
@@ -500,14 +496,40 @@ class LogViewerWindow(QMainWindow):
         plot_action.setEnabled(index.isValid() and self.source is not None)
         cursor_action.setEnabled(index.isValid())
         menu.addSeparator()
-        for action in (self.signal_values_action, self.statistics_action, self.info_action,
-                       self.signal_search_action):
+        expand_action = menu.addAction(tr("Expand All"))
+        collapse_action = menu.addAction(tr("Collapse All"))
+        menu.addSeparator()
+        for action in (self.statistics_action, self.info_action, self.signal_search_action):
             menu.addAction(action)
         chosen = menu.exec(self.trace.viewport().mapToGlobal(point))
         if chosen is plot_action:
             self._plot_message(index)
         elif chosen is cursor_action:
             self.trace.setCurrentIndex(index)
+        elif chosen is expand_action:
+            self.expand_trace(True)
+        elif chosen is collapse_action:
+            self.expand_trace(False)
+
+    def expand_trace(self, expanded: bool) -> None:
+        """Expand or collapse every filtered frame; a huge trace asks first."""
+        if self.view is None:
+            return
+        rows = self.model.rowCount()
+        if expanded and rows > EXPAND_CONFIRM_ROWS:
+            reply = QMessageBox.question(
+                self,
+                self._tr("Expand All"),
+                self._tr("Expanding {count} rows can take a while. Continue?", count=f"{rows:,}"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        if expanded:
+            self.trace.expandAll()
+        else:
+            self.trace.collapseAll()
 
     def _plot_message(self, index) -> None:
         """Plot every signal of the message under the cursor, as CANoe's trace does."""
@@ -516,7 +538,7 @@ class LogViewerWindow(QMainWindow):
 
         if self.source is None or not index.isValid():
             return
-        row = self.model.frame_row(index.row())
+        row = self.model.frame_row(_frame_index(index).row())
         frames = self.view.frames
         key = int(frame_keys(frames.take([row]))[0])
         channel = int(frames.channel[row])
@@ -842,28 +864,6 @@ class LogViewerWindow(QMainWindow):
         self.trace.setCurrentIndex(index)
         self.trace.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
 
-    def _show_signals(self, current, _previous=None) -> None:
-        from can_toolbox.canlog.database import decode_frame
-        from can_toolbox.canlog.decode import frame_keys
-
-        self.signal_values.clear()
-        if self.view is None or not current.isValid():
-            return
-        row = self.model.frame_row(current.row())
-        frames = self.view.frames
-        key = int(frame_keys(frames.take([row]))[0])
-        codec = self.view.database.codec(key, int(frames.channel[row])) if key >= 0 else None
-        if codec is None:
-            return
-        for value in decode_frame(codec, frames.data(row)):
-            physical = value.label if value.label is not None else number_text(value.physical)
-            raw = value.raw
-            raw_text = f"{raw} (0x{raw:X})" if isinstance(raw, int) and raw >= 0 else number_text(raw)
-            item = QTreeWidgetItem([value.name, str(physical), raw_text, value.unit])
-            self.signal_values.addTopLevelItem(item)
-        for column in range(3):
-            self.signal_values.resizeColumnToContents(column)
-
     def _refresh_statistics(self) -> None:
         if self.view is None or not self._stats_dirty or not self.statistics_dock.isVisible():
             return
@@ -968,7 +968,7 @@ class LogViewerWindow(QMainWindow):
     def _trace_moved(self, current, _previous=None) -> None:
         if self.view is None or not current.isValid() or self._cursor_driving:
             return
-        row = self.model.frame_row(current.row())
+        row = self.model.frame_row(_frame_index(current).row())
         self.graph.set_cursor((int(self.view.frames.time_ns[row]) - self.view.origin_ns) / 1e9)
 
     # -- drag & drop ---------------------------------------------------------------

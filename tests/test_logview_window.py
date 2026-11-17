@@ -118,13 +118,29 @@ def test_trace_lists_decoded_frames_in_time_order(window, log_files):
     assert "drive.blf" in window.file_label.text() and "1 DBC" in window.file_label.text()
 
 
-def test_selecting_a_frame_shows_signal_values(window, log_files):
+def test_expanding_a_frame_lists_its_decoded_signals(window, log_files):
+    """Signals are rows under the frame, decoded when the row is expanded."""
     _load(window, log_files[0])
-    window.trace.setCurrentIndex(window.model.index(2, 0))
-    values = window.signal_values
-    rows = {values.topLevelItem(i).text(0): values.topLevelItem(i) for i in range(values.topLevelItemCount())}
-    assert rows["Rpm"].text(1) == "2000" and rows["Rpm"].text(3) == "rpm"
-    assert rows["Gear"].text(1) == "Drive" and rows["Gear"].text(2) == "1 (0x1)"
+    model = window.model
+    frame = model.index(2, 0)
+    assert model.hasChildren(frame)
+    assert model.rowCount(frame) == 2
+    rows = {model.data(model.index(row, 3, frame)): model.data(model.index(row, 7, frame))
+            for row in range(model.rowCount(frame))}
+    assert rows == {"Rpm": "2000 rpm", "Gear": "Drive (1)"}
+    assert "raw 1 (0x1)" in model.data(model.index(1, 3, frame), Qt.ItemDataRole.ToolTipRole)
+
+    error_frame = model.index(80, 0)  # an error frame has no DBC message
+    assert not model.hasChildren(error_frame) and model.rowCount(error_frame) == 0
+
+    # The cursor follows the frame a signal row belongs to.
+    window.trace.setCurrentIndex(model.index(0, 0, frame))
+    assert window.graph.cursor_time[0] == pytest.approx(0.01)
+
+    window.expand_trace(True)
+    assert window.trace.isExpanded(frame)
+    window.expand_trace(False)
+    assert not window.trace.isExpanded(frame)
 
 
 def test_filters_modes_find_and_time_display(window, log_files):
@@ -415,11 +431,11 @@ def test_default_screen_is_graphics_and_trace(window):
     assert window.graph_splitter.widget(1) is window.graph
     assert not window.browser_window.isVisible()
     assert not window.trace_dock.isHidden() and not window.graph.toolbar.isHidden()
-    assert window.filter_toolbar.isHidden()
-    hidden = {
-        "Signal Values": window.values_dock,
-        "Statistics": window.statistics_dock, "Log Info": window.info_dock,
-    }
+    # The filter bar belongs to the trace dock, not to the window
+    assert window.filters.isAncestorOf(window.filters.filter_input)
+    assert window.trace_panel.isAncestorOf(window.filters)
+    assert window.trace_dock.widget() is window.trace_panel
+    hidden = {"Statistics": window.statistics_dock, "Log Info": window.info_dock}
     menu = {action.text(): action for action in window.view_menu.actions() if action.text()}
     assert {"Trace", *hidden} <= set(menu)
     for title, dock in hidden.items():
@@ -428,8 +444,6 @@ def test_default_screen_is_graphics_and_trace(window):
         assert not dock.isHidden()
         menu[title].trigger()
         assert dock.isHidden()
-    menu["Filter bar"].trigger()
-    assert not window.filter_toolbar.isHidden()
     window.hide()
 
 
@@ -535,7 +549,7 @@ def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):
 
 def test_window_layout_is_remembered(app, settings, legacy):
     first = MainWindow(settings, legacy=legacy)
-    first.values_dock.show()
+    first.statistics_dock.show()
     first.close()
     first.deleteLater()
     app.processEvents()
@@ -543,7 +557,7 @@ def test_window_layout_is_remembered(app, settings, legacy):
 
     second = MainWindow(settings, legacy=legacy)
     try:
-        assert not second.values_dock.isHidden()
+        assert not second.statistics_dock.isHidden()
     finally:
         second.close()
         second.deleteLater()
@@ -687,3 +701,36 @@ def test_lane_is_labelled_on_its_axis_with_the_full_name_as_tooltip(window, log_
     axis = plot.getAxis("left")
     assert "Rpm" in axis.labelText
     assert axis.label.toolTip() == "Rpm (Engine, CAN 1) [rpm]"
+
+
+def test_expand_all_asks_before_decoding_a_huge_trace(window, log_files, monkeypatch):
+    """Every expanded row is decoded, so a big trace needs a yes first."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from can_toolbox.ui.logview import window as window_module
+
+    _load(window, log_files[0])
+    monkeypatch.setattr(window_module, "EXPAND_CONFIRM_ROWS", 10)
+    asked = []
+
+    def answer(_parent, title, text, *_args, **_kwargs):
+        asked.append((title, text))
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(window_module.QMessageBox, "question", answer)
+    window.expand_trace(True)
+    assert asked and "81" in asked[0][1]
+    assert not window.trace.isExpanded(window.model.index(2, 0))
+
+    monkeypatch.setattr(window_module.QMessageBox, "question",
+                        lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    window.expand_trace(True)
+    assert window.trace.isExpanded(window.model.index(2, 0))
+
+
+def test_the_filter_bar_can_expand_and_collapse_the_trace(window, log_files):
+    _load(window, log_files[0])
+    window.filters.expand_button.click()
+    assert window.trace.isExpanded(window.model.index(2, 0))
+    window.filters.collapse_button.click()
+    assert not window.trace.isExpanded(window.model.index(2, 0))
