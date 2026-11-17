@@ -228,44 +228,94 @@ class FilterBar(QWidget):
 
 
 class SignalBrowser(QWidget):
-    """Searchable catalog of decodable signals; double-click or Add plots them."""
+    """Searchable catalog of decodable signals, in its own window.
+
+    Double-click, Add, or drag a selection onto the graph or the signal panel.
+    """
 
     plot_requested = Signal(object)
     add_selected = Signal()
+
+    title_key = "Signal Browser"
+    subtitle_key = "Pick signals from the open log and add them to the graph."
 
     def __init__(self, binder: TextBinder, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         from can_toolbox.ui.graphics import SignalTree
 
+        self._binder = binder
+        self._catalog: list = []
         self.search_input = QLineEdit()
         self.search_input.setClearButtonEnabled(True)
         binder.bind(self.search_input.setPlaceholderText, "Search signals")
         binder.bind(self.search_input.setAccessibleName, "Search signals")
+        self.channel_input = NoWheelComboBox()
+        binder.bind(self.channel_input.setAccessibleName, "Channel")
+        self.message_input = NoWheelComboBox()
+        binder.bind(self.message_input.setAccessibleName, "Message")
+        for combo in (self.channel_input, self.message_input):
+            combo.setMinimumWidth(130)
         self.tree = SignalTree()
         self.add_button = binder.widget(QPushButton, "Add to Graph")
 
+        filters = QHBoxLayout()
+        filters.setSpacing(6)
+        filters.addWidget(binder.widget(QLabel, "Channel"))
+        filters.addWidget(self.channel_input)
+        filters.addWidget(binder.widget(QLabel, "Message"))
+        filters.addWidget(self.message_input, 1)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
         layout.addWidget(self.search_input)
+        layout.addLayout(filters)
         layout.addWidget(self.tree, 1)
         layout.addWidget(self.add_button)
 
-        self.search_input.textChanged.connect(self.tree.apply_filter)
+        self.search_input.textChanged.connect(lambda _text: self._apply_filters())
+        self.channel_input.currentIndexChanged.connect(lambda _index: self._apply_filters())
+        self.message_input.currentIndexChanged.connect(lambda _index: self._apply_filters())
         self.tree.signal_activated.connect(self.plot_requested)
         self.add_button.clicked.connect(self.add_selected)
+        self._fill_filter_choices()
 
     def sizeHint(self):
         """A narrow column: the tree's own hint would claim a third of the window."""
-        return QSize(260, 480)
+        return QSize(320, 560)
 
     def populate(self, catalog) -> None:
-        self.tree.populate(catalog)
-        self.tree.apply_filter(self.search_input.text())
+        self._catalog = list(catalog)
+        self._fill_filter_choices()
+        self.tree.populate(self._catalog)
+        self._apply_filters()
+
+    def _fill_filter_choices(self) -> None:
+        tr = self._binder.tr
+        for combo, values in (
+            (self.channel_input, sorted({entry.channel for entry in self._catalog})),
+            (self.message_input, sorted({entry.message for entry in self._catalog}, key=str.casefold)),
+        ):
+            previous = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(tr("All"), None)
+            for value in values:
+                combo.addItem(f"CAN {value}" if combo is self.channel_input else str(value), value)
+            combo.setCurrentIndex(max(combo.findData(previous), 0))
+            combo.blockSignals(False)
+
+    def _apply_filters(self) -> None:
+        self.tree.apply_filter(self.search_input.text(),
+                               channel=self.channel_input.currentData(),
+                               message=self.message_input.currentData())
+
+    def update_language(self) -> None:
+        self._fill_filter_choices()
 
     def selected_refs(self):
         return self.tree.selected_refs()
 
     def set_controls_enabled(self, enabled: bool) -> None:
-        self.search_input.setEnabled(enabled)
-        self.add_button.setEnabled(enabled)
+        for widget in (self.search_input, self.add_button, self.channel_input, self.message_input):
+            widget.setEnabled(enabled)

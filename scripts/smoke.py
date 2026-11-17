@@ -150,12 +150,16 @@ def stage_gui(_workdir: Path) -> None:
     configure_appearance(app)
     window = MainWindow()
     try:
-        docks = [window.trace_dock, window.browser_dock, *window.panel_docks]
+        docks = [window.trace_dock, *window.panel_docks]
         titles = [dock.windowTitle() for dock in docks]
         if not all(titles):
             raise AssertionError(f"log viewer dock without a title: {titles}")
-        if window.centralWidget() is not window.graph:
+        if window.centralWidget() is not window.graph_splitter:
             raise AssertionError("Graphics is not the central widget")
+        if window.graph_splitter.widget(0) is not window.signal_panel:
+            raise AssertionError("the signal panel is not beside the graph")
+        if not window.browser_window.windowTitle():
+            raise AssertionError("the signal browser window has no title")
         if any(action.icon().isNull() for action in window.graph_actions):
             raise AssertionError("a toolbar action lost its icon")
         window.show()
@@ -166,7 +170,7 @@ def stage_gui(_workdir: Path) -> None:
             tools.append(tool.windowTitle())
             tool.close()
         app.processEvents()
-        print(f"gui: docks {titles}, tools {tools}")
+        print(f"gui: docks {titles}, browser '{window.browser_window.windowTitle()}', tools {tools}")
     finally:
         window.close()
         window.deleteLater()

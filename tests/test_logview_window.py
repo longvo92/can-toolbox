@@ -85,6 +85,18 @@ def wait_until(condition, timeout=60):
     assert condition(), "Qt worker did not finish in time"
 
 
+def _value(panel, row, column):
+    """One cell of the signal panel, by row among all entries in display order."""
+    entry = panel.signals.entries()[row]
+    index = panel.model.index_of(entry).siblingAtColumn(column)
+    return panel.model.data(index)
+
+
+def _select_entry(panel, row):
+    entry = panel.signals.entries()[row]
+    panel.view.setCurrentIndex(panel.model.index_of(entry))
+
+
 def _cell(window, row, column):
     return window.model.data(window.model.index(row, column))
 
@@ -189,36 +201,38 @@ def test_graph_plots_signals_and_syncs_cursor_with_trace(window, log_files):
     window.signal_browser.add_button.click()
     assert [series.ref.signal for series in window.graph.series] == ["Rpm", "Gear"]
     window.plot_signal(rpm_item.data(0, Qt.ItemDataRole.UserRole))
-    assert len(window.graph.series) == 2 and "already plotted" in window.status_label.text()
+    assert len(window.graph.series) == 2 and "already in the list" in window.status_label.text()
 
-    # Trace selection moves the cursor; readout shows sample-and-hold values.
+    # Trace selection moves the cursor; the panel shows sample-and-hold values.
+    panel = window.signal_panel
     window.trace.setCurrentIndex(window.model.index(2, 0))
     assert window.graph.cursor_time[0] == pytest.approx(0.01)
-    assert window.graph.readout.item(0, 1).text() == "2000 rpm"
-    assert window.graph.readout.item(1, 1).text() == "Drive (1)"
+    assert _value(panel, 0, 1) == "2000 rpm"
+    assert _value(panel, 1, 1) == "Drive (1)"
 
     # Dragging the graph cursor selects the last frame at or before it.
     window.graph._cursors[0][0].setValue(0.0251)
     assert window.trace.currentIndex().row() == 5
-    assert window.graph.readout.item(1, 1).text() == "Park (0)"
+    assert _value(panel, 1, 1) == "Park (0)"
 
     window.cursor2_action.setChecked(True)
     assert window.graph.measuring
     window.graph._cursors[1][0].setValue(0.1)
     assert "Δt = 0.074900 s" in window.graph.delta_label.text()
-    assert window.graph.readout.item(0, 3).text() == "0"
+    assert _value(panel, 0, 5) == "0"
+    assert not panel.view.isColumnHidden(2) and not panel.view.isColumnHidden(5)
 
     tree.apply_filter("gear")
     assert not engine.isHidden() and rpm_item.isHidden() and not gear_item.isHidden()
     assert ref_from_mime(ref_to_mime(gear_item.data(0, Qt.ItemDataRole.UserRole))).signal == "Gear"
 
-    window.graph.readout.selectRow(0)
+    _select_entry(panel, 0)
     window.graph.remove_selected()
     assert [series.ref.signal for series in window.graph.series] == ["Gear"]
-    window.open_log(str(log_files[0]))  # reload keeps plots that still resolve
+    window.open_log(str(log_files[0]))  # reload keeps the list that still resolves
     wait_until(lambda: not window.is_busy() and window.graph.series
                and window.graph.series[0].ref.signal == "Gear")
-    window.graph.clear()
+    window.signals.clear()
     assert not window.graph.series and window.graph.placeholder.isVisibleTo(window.graph)
 
 
@@ -377,6 +391,7 @@ def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legac
         assert other.filters.direction_input.currentData() == "rx"
         assert other.filters.time_mode() == "absolute"
         assert [series.ref.signal for series in other.graph.series] == ["Gear"]
+        assert [entry.ref.signal for entry in other.signals.entries()] == ["Gear"]
         assert other.graph.cursor_time == [0.05, 0.2] and other.graph.measuring
         assert other.cursor2_action.isChecked()
 
@@ -394,11 +409,15 @@ def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legac
 def test_default_screen_is_graphics_and_trace(window):
     """Everything else starts hidden and comes back from the View menu."""
     window.show()
-    assert window.centralWidget() is window.graph  # Graphics is the work surface
+    # Graphics is the work surface; the signal list shares the splitter with it
+    assert window.centralWidget() is window.graph_splitter
+    assert window.graph_splitter.widget(0) is window.signal_panel
+    assert window.graph_splitter.widget(1) is window.graph
+    assert not window.browser_window.isVisible()
     assert not window.trace_dock.isHidden() and not window.graph.toolbar.isHidden()
     assert window.filter_toolbar.isHidden()
     hidden = {
-        "Signal Browser": window.browser_dock, "Signal Values": window.values_dock,
+        "Signal Values": window.values_dock,
         "Statistics": window.statistics_dock, "Log Info": window.info_dock,
     }
     menu = {action.text(): action for action in window.view_menu.actions() if action.text()}
@@ -425,7 +444,8 @@ def test_panels_open_as_their_own_window_from_the_trace(window, log_files):
     assert not window.statistics_dock.isFloating()
 
     window.signal_search_action.trigger()
-    assert not window.browser_dock.isHidden() and window.browser_dock.isFloating()
+    assert window.browser_window.isVisible() and window.browser_window.widget is window.signal_browser
+    window.browser_window.close()
     window.hide()
 
 
@@ -515,7 +535,7 @@ def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):
 
 def test_window_layout_is_remembered(app, settings, legacy):
     first = MainWindow(settings, legacy=legacy)
-    first.browser_dock.hide()
+    first.values_dock.show()
     first.close()
     first.deleteLater()
     app.processEvents()
@@ -523,7 +543,7 @@ def test_window_layout_is_remembered(app, settings, legacy):
 
     second = MainWindow(settings, legacy=legacy)
     try:
-        assert second.browser_dock.isHidden()
+        assert not second.values_dock.isHidden()
     finally:
         second.close()
         second.deleteLater()

@@ -18,11 +18,13 @@ from PySide6.QtWidgets import (
     QMenu,
     QProgressBar,
     QPushButton,
+    QSplitter,
     QToolBar,
     QTreeWidgetItem,
     QWidget,
 )
 
+from can_toolbox.canlog.workspace import PlottedSignal, SignalGroup
 from can_toolbox.ui.logview.dialogs import LOG_FILTER, LOG_SUFFIXES, WORKSPACE_FILTER, DbcDialog
 from can_toolbox.ui.logview.export_dialog import ExportDialog
 from can_toolbox.ui.logview.panels import (
@@ -36,18 +38,24 @@ from can_toolbox.ui.logview.panels import (
     build_trace_view,
     fill_statistics,
 )
+from can_toolbox.ui.logview.signal_panel import SignalPanel
+from can_toolbox.ui.logview.signal_set import SignalSet
 from can_toolbox.ui.logview.tasks import Task, load_view
 from can_toolbox.ui.logview.trace import COLUMNS, TraceModel, number_text
 from can_toolbox.ui.theme import icon as themed_icon
 from can_toolbox.ui.theme import manager as theme_manager
+from can_toolbox.ui.tool_windows import ToolWindow
 from can_toolbox.ui.widgets import TextBinder
 
 SETTINGS_PREFIX = "logview/"
 # 3: the main toolbar was removed, so a layout saved with it must not be restored.
 STATE_VERSION = 3
-BROWSER_WIDTH = 260
 ZOOM_STEP = 1.6
 RECENT_LOGS = 8
+
+
+def _plotted(entry) -> PlottedSignal:
+    return PlottedSignal(entry.ref, entry.visible, entry.color_index)
 
 
 class LogViewerWindow(QMainWindow):
@@ -79,6 +87,7 @@ class LogViewerWindow(QMainWindow):
         self._loaded_summary: dict[str, str] = {}
         self._cursor_driving = False
         self.source = None
+        self._series: dict = {}
         self.last_export = None
         self._pending_workspace = None
         self._engine_log: list[str] = []
@@ -109,6 +118,7 @@ class LogViewerWindow(QMainWindow):
     def _build_widgets(self) -> None:
         from can_toolbox.ui.graphics import GraphPanel
 
+        self.signals = SignalSet(self)
         self.model = TraceModel(self)
         self.trace = build_trace_view(self.model)
         self.signal_values = build_signal_values()
@@ -118,12 +128,21 @@ class LogViewerWindow(QMainWindow):
 
         self.graph = GraphPanel(self._binder, actions=self.graph_actions)
         self.graph.set_line_width(line_width(self._settings))
+        self.signal_panel = SignalPanel(self.signals, self._binder, self._settings)
         self.signal_browser = SignalBrowser(self._binder)
         self.filters = FilterBar(self._binder)
         # Graphics is the work surface every dock arranges itself around. Without a
         # real central widget Qt hands the leftover width to the dock areas, which
-        # leaves dead space beside the panels.
-        self.setCentralWidget(self.graph)
+        # leaves dead space beside the panels. The signal list shares it, as in a
+        # CANoe Graphics window.
+        self.graph_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.graph_splitter.setObjectName("graphSplitter")
+        self.graph_splitter.addWidget(self.signal_panel)
+        self.graph_splitter.addWidget(self.graph)
+        self.graph_splitter.setStretchFactor(0, 1)
+        self.graph_splitter.setStretchFactor(1, 3)
+        self.graph_splitter.setSizes([360, 900])
+        self.setCentralWidget(self.graph_splitter)
 
     def _build_actions(self) -> None:
         self.open_action = self._action("Open Log…", "Ctrl+O", icon="open")
@@ -144,6 +163,7 @@ class LogViewerWindow(QMainWindow):
         self.statistics_action = self._action("Statistics", icon="statistics")
         self.info_action = self._action("Log Info", icon="info")
         self.signal_search_action = self._action("Signal search…", icon="search")
+        self.signal_browser_action = self._action("Signal Browser")
         self.signal_values_action = self._action("Signal Values")
         self.graph_actions = (self.fit_action, self.fit_x_action, self.fit_y_action,
                               self.zoom_in_action, self.zoom_out_action,
@@ -183,8 +203,9 @@ class LogViewerWindow(QMainWindow):
             self.setCorner(corner, Qt.DockWidgetArea.LeftDockWidgetArea)
         for corner in (Qt.Corner.TopRightCorner, Qt.Corner.BottomRightCorner):
             self.setCorner(corner, Qt.DockWidgetArea.RightDockWidgetArea)
-        self.browser_dock = self._dock("Signal Browser", self.signal_browser,
-                                       Qt.DockWidgetArea.LeftDockWidgetArea, "signalBrowserDock")
+        self.browser_window = ToolWindow(self, self.signal_browser, self._binder,
+                                         settings=self._settings, key="signals")
+        self.browser_window.hide()
         self.trace_dock = self._dock("Trace", self.trace, Qt.DockWidgetArea.BottomDockWidgetArea, "traceDock")
         self.values_dock = self._dock("Signal Values", self.signal_values,
                                       Qt.DockWidgetArea.BottomDockWidgetArea, "signalValuesDock")
@@ -196,7 +217,7 @@ class LogViewerWindow(QMainWindow):
         # A minimal first screen: toolbar, Graphics and Trace. Everything else is
         # one click away in View, or from the trace's own context menu.
         self.panel_docks = (self.values_dock, self.statistics_dock, self.info_dock)
-        for dock in (*self.panel_docks, self.browser_dock):
+        for dock in self.panel_docks:
             dock.hide()
         self._apply_default_dock_sizes()
 
@@ -207,7 +228,6 @@ class LogViewerWindow(QMainWindow):
         again from :meth:`showEvent` unless a saved layout was restored.
         """
         # resizeDocks accepts docks of one area at a time.
-        self.resizeDocks([self.browser_dock], [BROWSER_WIDTH], Qt.Orientation.Horizontal)
         self.resizeDocks([self.trace_dock, *self.panel_docks], [660, 340, 340, 340],
                          Qt.Orientation.Horizontal)
         self.resizeDocks([self.trace_dock], [320], Qt.Orientation.Vertical)
@@ -261,12 +281,12 @@ class LogViewerWindow(QMainWindow):
 
         self.view_menu = self.menuBar().addMenu("")
         self._binder.bind(self.view_menu.setTitle, "View")
-        for dock, key in ((self.trace_dock, "Trace"), (self.browser_dock, "Signal Browser"),
-                          (self.values_dock, "Signal Values"), (self.statistics_dock, "Statistics"),
-                          (self.info_dock, "Log Info")):
+        for dock, key in ((self.trace_dock, "Trace"), (self.values_dock, "Signal Values"),
+                          (self.statistics_dock, "Statistics"), (self.info_dock, "Log Info")):
             action = dock.toggleViewAction()
             self._binder.bind(action.setText, key)
             self.view_menu.addAction(action)
+        self.view_menu.addAction(self.signal_browser_action)
         self.view_menu.addSeparator()
         for action in self.graph_actions:
             self.view_menu.addAction(action)
@@ -299,8 +319,16 @@ class LogViewerWindow(QMainWindow):
         self.statistics_dock.visibilityChanged.connect(lambda _visible: self._refresh_statistics())
         self.signal_browser.plot_requested.connect(self.plot_signal)
         self.signal_browser.add_selected.connect(self._plot_selected)
-        self.graph.signal_dropped.connect(self.plot_signal)
+        self.signal_browser_action.triggered.connect(self._open_signal_browser)
+        self.signals.changed.connect(self._signals_changed)
+        self.signal_panel.add_requested.connect(self._open_signal_browser)
+        self.signal_panel.focus_changed.connect(self.graph.set_focus_ref)
+        self.graph.remove_requested.connect(self._remove_selected_signals)
+        self.graph.clear_requested.connect(self.signals.clear)
+        self.graph.range_changed.connect(self.signal_panel.set_range)
+        self.graph.signal_dropped.connect(self._plot_refs)
         self.graph.cursor_moved.connect(self._cursor_moved)
+        self.graph.cursors_changed.connect(self._update_signal_values)
         self.graph.measuring_changed.connect(self._measuring_changed)
         self.fit_action.triggered.connect(lambda: self.graph.fit(self.duration()))
         self.fit_x_action.triggered.connect(lambda: self.graph.fit_x(self.duration()))
@@ -338,6 +366,8 @@ class LogViewerWindow(QMainWindow):
         self.statistics.setHorizontalHeaderLabels([tr(column) for column in STATISTICS_COLUMNS])
         self._update_file_label()
         self.graph.set_languages()
+        self.signal_panel.update_language()
+        self.signal_browser.update_language()
         key, parameters = self._status
         self._set_status(key, **parameters)
         self._update_extra_language()
@@ -381,6 +411,7 @@ class LogViewerWindow(QMainWindow):
         self.signal_browser.set_controls_enabled(loaded and not busy)
         for action in self.graph_actions:
             action.setEnabled(loaded and not busy)
+        self.signal_panel.setEnabled(loaded and not busy)
         for action in (self.statistics_action, self.info_action, self.signal_values_action,
                        self.signal_search_action):
             action.setEnabled(loaded and not busy)
@@ -457,7 +488,7 @@ class LogViewerWindow(QMainWindow):
         return dock
 
     def _open_signal_search(self) -> None:
-        self.open_panel(self.browser_dock)
+        self._open_signal_browser()
         self.signal_browser.search_input.setFocus()
 
     def _show_trace_menu(self, point) -> None:
@@ -686,9 +717,14 @@ class LogViewerWindow(QMainWindow):
             errors=self.filters.errors_input.isChecked(),
             mode=self.filters.mode(),
             time=self.filters.time_mode(),
-            signals=tuple(self.graph.refs()),
+            signals=tuple(_plotted(entry) for entry in self.signals.root),
+            groups=tuple(
+                SignalGroup(group.name, tuple(_plotted(entry) for entry in group.entries), group.expanded)
+                for group in self.signals.groups
+            ),
             cursors=tuple(self.graph.cursor_time),
             measure=self.graph.measuring,
+            plot_mode=self.signal_panel.plot_mode,
         )
 
     def _save_workspace_as(self) -> None:
@@ -746,16 +782,26 @@ class LogViewerWindow(QMainWindow):
         self.open_log(workspace.log)
 
     def _apply_workspace(self, workspace) -> None:
-        """Restore trace settings and plots once the workspace log is loaded."""
+        """Restore trace settings, the signal list and the cursors once the log is loaded."""
         self.filters.restore_filters(workspace.filter, workspace.channel, workspace.direction, workspace.errors)
         self._apply_filter()
-        self.graph.clear()
-        missing = []
-        for ref in workspace.signals:
-            before = len(self.graph.series)
-            self.plot_signal(ref, quiet=True)
-            if len(self.graph.series) == before:
-                missing.append(ref.signal)
+        self.signals.clear()
+        missing: list[str] = []
+
+        def restore(plotted, group) -> None:
+            self.signals.add(plotted.ref, group, visible=plotted.visible, color_index=plotted.color)
+            if self.series_for(plotted.ref) is None:
+                missing.append(plotted.ref.signal)
+
+        for stored in workspace.groups:
+            group = self.signals.new_group(stored.name)
+            group.expanded = stored.expanded
+            for plotted in stored.signals:
+                restore(plotted, group)
+        for plotted in workspace.signals:
+            restore(plotted, None)
+        self.signal_panel.set_plot_mode(workspace.plot_mode)
+        self._refresh_graph()
         self.graph.restore_cursors(*workspace.cursors, workspace.measure)
         if missing:
             self._set_status("Workspace opened; not found in this log: {signals}", signals=", ".join(missing))
@@ -835,31 +881,76 @@ class LogViewerWindow(QMainWindow):
     # -- graphics ------------------------------------------------------------------
 
     def _reset_signals(self) -> None:
-        """Rebuild the signal list for the current log and DBCs; keep plots that still resolve."""
+        """Rebuild the catalog for the current log and DBCs; keep the signal list as it is."""
         from can_toolbox.canlog.signals import SignalSource
 
         self.source = SignalSource(self.view)
         self.signal_browser.populate(self.source.catalog())
-        refs = self.graph.refs()
-        self.graph.clear()
-        for ref in refs:
-            self.plot_signal(ref, quiet=True)
+        self._series.clear()
+        self._refresh_graph()
+
+    def series_for(self, ref):
+        """The series for ``ref`` in the open log, or ``None``; decoded once and cached."""
+        if self.view is None or self.source is None:
+            return None
+        if ref not in self._series:
+            try:
+                self._series[ref] = self.source.series(ref)
+            except KeyError:
+                self._series[ref] = None
+        return self._series[ref]
+
+    def _signals_changed(self) -> None:
+        self._refresh_graph()
+
+    def _refresh_graph(self) -> None:
+        """Draw the visible entries that this log can decode, in list order."""
+        plots = []
+        for entry in self.signals.visible_entries():
+            series = self.series_for(entry.ref)
+            if series is not None:
+                plots.append((entry, series))
+        self.graph.show_entries(plots)
+        self.signal_panel.set_series_lookup(self.series_for)
+        self._update_signal_values()
+        self._set_controls_enabled()
+
+    def _update_signal_values(self) -> None:
+        self.signal_panel.set_cursors(*self.graph.cursor_time, self.graph.measuring)
+        self.signal_panel.set_range(*self.graph.x_range())
+
+    def _remove_selected_signals(self) -> None:
+        entries = self.signal_panel.selected_entries()
+        groups = self.signal_panel.selected_groups()
+        if entries:
+            self.signals.remove(entries)
+        for group in groups:
+            self.signals.delete_group(group)
+
+    def _open_signal_browser(self) -> None:
+        self.browser_window.show()
+        self.browser_window.raise_()
+        self.browser_window.activateWindow()
 
     def plot_signal(self, ref, quiet: bool = False) -> None:
+        """Add ``ref`` to the signal list, in the group the panel has selected."""
         if self.view is None:
             return
-        try:
-            series = self.source.series(ref)
-        except KeyError as exc:
+        if self.signals.entry_for(ref) is not None:
             if not quiet:
-                self._set_status("Cannot plot {signal}: {error}", signal=ref.signal, error=exc)
+                self._set_status("{signal} is already in the list.", signal=ref.signal)
             return
-        if not self.graph.add_series(series) and not quiet:
-            self._set_status("{signal} is already plotted or the graph is full.", signal=ref.signal)
+        if self.series_for(ref) is None and not quiet:
+            self._set_status("Cannot plot {signal}: not in this log", signal=ref.signal)
+            return
+        self.signals.add(ref, self.signal_panel.current_group())
+
+    def _plot_refs(self, refs) -> None:
+        for ref in refs:
+            self.plot_signal(ref)
 
     def _plot_selected(self) -> None:
-        for ref in self.signal_browser.selected_refs():
-            self.plot_signal(ref)
+        self._plot_refs(self.signal_browser.selected_refs())
 
     def _cursor_moved(self, seconds: float) -> None:
         """Graph cursor drives the trace: select the last frame at or before the cursor."""
