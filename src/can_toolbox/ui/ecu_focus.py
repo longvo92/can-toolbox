@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from can_toolbox.i18n import translate
-from can_toolbox.ui.widgets import dialog_buttons
+from ..dbc_compare.i18n import translate
+from .widgets import dialog_buttons
 
 
 class EcuFocusDialog(QDialog):

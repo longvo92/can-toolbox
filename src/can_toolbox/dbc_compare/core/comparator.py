@@ -4,15 +4,15 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path, PureWindowsPath
 
-from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
-from can_toolbox.dbc_compare.core.ecu import (
+from .discovery import collect_dbc_files
+from .ecu import (
     database_ecu_nodes,
     receivers_match,
     transmitters_match,
     validate_dbc_input,
     validate_ecu_map,
 )
-from can_toolbox.dbc_compare.core.models import (
+from .models import (
     Change,
     ComparisonResult,
     DbcDatabase,
@@ -22,9 +22,9 @@ from can_toolbox.dbc_compare.core.models import (
     Message,
     Signal,
 )
-from can_toolbox.dbc_compare.core.pairing import DatabaseCandidate, match_renamed_databases
-from can_toolbox.dbc_compare.core.parser import DbcParseError, parse_dbc, validate_database
-from can_toolbox.dbc_compare.core.rename import EventMessageDetector, MessageRenameDetector, SignalRenameDetector
+from .pairing import DatabaseCandidate, match_renamed_databases
+from .parser import DbcParseError, parse_dbc, validate_database
+from .rename import EventMessageDetector, MessageRenameDetector, SignalRenameDetector
 
 LAYOUT_PROPERTIES = ("Start Bit", "Length", "Byte Order")
 PROPERTY_ORDER = (

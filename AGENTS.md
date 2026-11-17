@@ -26,6 +26,7 @@ GUI-only Windows desktop app shipped as one PyInstaller exe. The window is a CAN
 - Colours live only in `ui/theme.py`; `tests/test_theme.py` fails on a hex colour elsewhere under `ui/` and on contrast below WCAG AA.
 - GUI options, report formats, MAT layouts and the mapping schema stay compatible unless a documented migration says otherwise (`docs/migration-2.0.md`). The schema is one document in YAML, JSON or TXT; 0.x files still load.
 - Engine log text stays English; GUI chrome and the Excel report are localized (EN/VI).
+- The DBC comparison code is vendored from the standalone [dbc-compare-tool](https://github.com/longvo92/dbc-compare-tool) repository, which is its source of truth: `dbc_compare/**` (translations included), `ui/compare_tab.py` and `ui/ecu_focus.py`. They use relative imports only and never import `can_toolbox` (`tests/test_dbc_compare_boundary.py`). Pulling an update means copying those files over and running the compare tests.
 - Dataset export is verified only with a mocked MATLAB in tests; a licensed MATLAB run is separate evidence.
 
 Working rules live in the owner's global instructions.

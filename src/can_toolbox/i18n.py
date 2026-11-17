@@ -1,133 +1,26 @@
+"""Translations for the application shell, the log viewer and BLF -> MAT.
+
+The DBC comparison strings live in :mod:`can_toolbox.dbc_compare.i18n` so the
+engine stays self-contained; they are merged in here.
+"""
+
 from __future__ import annotations
 
-from can_toolbox.dbc_compare.core.reasons import MatchReason
+from can_toolbox.dbc_compare.i18n import LANGUAGES, reason_render, render
+from can_toolbox.dbc_compare.i18n import VI as COMPARE_VI
 
-LANGUAGES = ("en", "vi")
+__all__ = ["LANGUAGES", "VI", "reason_text", "translate"]
 
 
 def translate(language: str, key: str, **parameters: object) -> str:
-    template = VI.get(key, key) if language == "vi" else key
-    return template.format(**parameters) if parameters else template
+    return render(VI, language, key, **parameters)
 
 
 def reason_text(language: str, reason: str) -> str:
-    if isinstance(reason, MatchReason):
-        return translate(language, reason.template, **reason.parameters)
-    return translate(language, reason)
+    return reason_render(VI, language, reason)
 
 
-VI = {
-    "Summary": "Tổng quan",
-    "DBC Overview": "Tổng quan DBC",
-    "Message Details": "Chi tiết message",
-    "Signal Details": "Chi tiết signal",
-    "CAN Toolbox  —  DBC Comparison Report": "CAN Toolbox  —  Report so sánh DBC",
-    "Metric": "Chỉ số",
-    "Count": "Số lượng",
-    "Messages Added": "Message thêm mới",
-    "Messages Removed": "Message đã xóa",
-    "Messages Modified": "Message đã sửa",
-    "Messages Renamed": "Message đổi tên",
-    "Messages Unchanged": "Message không đổi",
-    "Signals Added": "Signal thêm mới",
-    "Signals Removed": "Signal đã xóa",
-    "Signals Modified": "Signal đã sửa",
-    "Signals Renamed": "Signal đổi tên",
-    "Signals Unchanged": "Signal không đổi",
-    "Total Changes": "Tổng số thay đổi",
-    "Report Mode": "Chế độ report",
-    "Include Unchanged": "Gồm mục không đổi",
-    "Changes only": "Chỉ gồm thay đổi",
-    "Parse Errors (skipped DBCs)": "Lỗi đọc DBC (đã bỏ qua file)",
-    "Completeness": "Mức độ đầy đủ",
-    "Complete": "Đầy đủ",
-    "Incomplete": "Chưa đầy đủ",
-    "Matching Policy": "Quy tắc matching",
-    "Coverage {group}": "Phạm vi so sánh {group}",
-    "Coverage Scope": "Phạm vi thống kê",
-    "Entire input": "Toàn bộ input",
-    "paired": "đã ghép cặp",
-    "unmatched": "không có cặp",
-    "not compared": "chưa so sánh",
-    "unreadable entities: Unknown": "mục không đọc được: Không rõ",
-    "Parse Error": "Lỗi đọc DBC",
-    "Old Baseline": "Baseline cũ",
-    "New Baseline": "Baseline mới",
-    "ECU Focus": "ECU focus",
-    "Focus Scope": "Phạm vi focus",
-    "Tx/Rx on either baseline": "Tx/Rx ở bản cũ hoặc bản mới",
-    "No changes in focus": "Không có thay đổi trong phạm vi focus",
-    "Focus ECU Pair": "Cặp ECU trong phạm vi focus",
-    "ECU Node": "Node ECU",
-    "Status": "Trạng thái",
-    "Path": "Đường dẫn",
-    "Pairing Confidence": "Độ tin cậy ghép cặp",
-    "Messages": "Số message",
-    "Signals": "Số signal",
-    "Messages (whole DBC)": "Số message (toàn DBC)",
-    "Signals (whole DBC)": "Số signal (toàn DBC)",
-    "Pairing Reason": "Lý do ghép cặp",
-    "Matched": "Đã ghép cặp",
-    "DBC Added": "DBC thêm mới",
-    "DBC Removed": "DBC đã xóa",
-    "DBC Renamed": "DBC đổi tên",
-    "Manually Paired": "Ghép cặp thủ công",
-    "Unknown": "Không rõ",
-    "DBC File": "File DBC",
-    "Change Type": "Loại thay đổi",
-    "Old Message Name": "Tên message cũ",
-    "New Message Name": "Tên message mới",
-    "Confidence Score": "Điểm tin cậy",
-    "Confidence Level": "Mức tin cậy",
-    "Match Reason": "Lý do matching",
-    "ECU Node Tx": "Node ECU Tx",
-    "ECU Node Rx": "Node ECU Rx",
-    "Changed Properties": "Thuộc tính thay đổi",
-    "Parent Message (Old)": "Message chứa signal (cũ)",
-    "Parent Message (New)": "Message chứa signal (mới)",
-    "Old Signal Name": "Tên signal cũ",
-    "New Signal Name": "Tên signal mới",
-    "Added": "Thêm mới",
-    "Removed": "Đã xóa",
-    "Modified": "Đã sửa",
-    "Renamed": "Đổi tên",
-    "Unchanged": "Không đổi",
-    "High": "Cao",
-    "Medium": "Trung bình",
-    "Low": "Thấp",
-    "Identical CAN ID": "Cùng CAN ID",
-    "Explicit file selection": "File do người dùng chọn",
-    "Shared DBC keywords: {words}": "Từ khóa DBC chung: {words}",
-    "DBC CAN ID overlap {overlap:.0%}": "Trùng {overlap:.0%} CAN ID của DBC",
-    "Message names overlap {overlap:.0%}": "Trùng {overlap:.0%} tên message",
-    "Common CAN ID structures {overlap:.0%} matched": "Trùng {overlap:.0%} cấu trúc của các CAN ID chung",
-    "CAN ID matched": "Cùng CAN ID",
-    "DLC matched": "Cùng DLC",
-    "Transmitter matched": "Cùng Transmitter",
-    "Cycle time matched": "Cùng Cycle Time",
-    "Signal count matched": "Cùng số signal",
-    "Signal layout {overlap:.0%} matched": "Trùng {overlap:.0%} bố trí signal",
-    "Names are similar": "Tên tương tự",
-    "Names have some similarity": "Tên có phần tương tự",
-    "Start bit matched": "Cùng Start Bit",
-    "Length matched": "Cùng Length",
-    "Byte order matched": "Cùng Byte Order",
-    "Signedness matched": "Cùng Signed",
-    "Factor matched": "Cùng Factor",
-    "Offset matched": "Cùng Offset",
-    "Unit matched": "Cùng Unit",
-    "Receivers matched": "Cùng Receivers",
-    "Start bit shifted by {shift} bit(s)": "Start Bit dịch {shift} bit",
-    "All signal properties matched; identity requires review": "Trùng toàn bộ thuộc tính signal. Cần kiểm tra cặp này",
-    "Heuristic signal pairing; review recommended": "Ghép signal theo độ tương đồng. Nên kiểm tra cặp này",
-    "Event Matrix message: name similarity is primary criterion": "Message Event Matrix ưu tiên độ tương đồng tên",
-    "Ambiguous: {count} rival matches for this item": "Có {count} cặp khác có thể khớp với mục này",
-    "Ambiguous: {count} competing pair(s), score margin {margin:.2f}":
-        "Có {count} cặp khác có thể khớp, chênh lệch điểm {margin:.2f}",
-    # GUI
-    "Save": "Lưu",
-    "Cancel": "Hủy",
-    "Close": "Đóng",
+SHELL_VI = {
     "Settings": "Cài đặt",
     "Language": "Ngôn ngữ",
     "Language…": "Ngôn ngữ…",
@@ -138,7 +31,6 @@ VI = {
     "Light": "Sáng",
     "Dark": "Tối",
     "Help": "Trợ giúp",
-    # Shell: menus, docks and toolbars of the log viewer window
     "View": "Hiển thị",
     "Tools": "Công cụ",
     "Quit": "Thoát",
@@ -156,110 +48,12 @@ VI = {
     "GUI Language": "Ngôn ngữ GUI",
     "Report Language": "Ngôn ngữ report",
     "Follow GUI": "Theo GUI",
-    "Compare DBC baselines. Review message and signal changes in Excel.":
-        "So sánh các baseline DBC và xem thay đổi message, signal trong Excel.",
-    "Baselines": "Baseline so sánh",
-    "Input Type": "Loại input",
-    "Folders": "Folder",
-    "Files": "File",
-    "Old Baseline Folder": "Folder baseline cũ",
-    "New Baseline Folder": "Folder baseline mới",
-    "Old Baseline DBC": "File DBC cũ",
-    "New Baseline DBC": "File DBC mới",
-    "Browse": "Duyệt…",
-    "Browse old baseline folder": "Duyệt folder baseline cũ",
-    "Browse new baseline folder": "Duyệt folder baseline mới",
-    "Browse old baseline dbc": "Duyệt file DBC cũ",
-    "Browse new baseline dbc": "Duyệt file DBC mới",
-    "Browse report output path": "Chọn nơi lưu report",
-    "Browse or drag & drop a DBC file here": "Chọn hoặc kéo thả file DBC vào đây",
-    "Browse or drag & drop a folder here": "Chọn hoặc kéo thả folder vào đây",
-    "The selected DBC files are compared directly.": "So sánh trực tiếp hai file DBC đã chọn.",
-    "Automatic DBC pairing by default.": "Mặc định ghép cặp DBC tự động.",
-    "Report": "Report",
-    "Report Path (optional)": "Đường dẫn report (tùy chọn)",
-    "Automatic: {path}": "Tự động: {path}",
-    "Automatic: beside NEW as compared_<old>_vs_<new>.xlsx":
-        "Tự động: lưu cạnh NEW với tên compared_<old>_vs_<new>.xlsx",
-    "Include unchanged messages and signals within the current ECU scope.":
-        "Xuất cả message và signal không đổi trong phạm vi ECU hiện tại.",
-    "Compare two DBC files directly in Files mode. In Folders mode, use saved manual mapping, including Removed rows; otherwise use automatic matching. Saved ECU pairing applies in either mode.":
-        "Chế độ File so sánh trực tiếp hai file DBC. Chế độ Folder dùng cặp đã lưu, kể cả mục đánh dấu đã xóa, hoặc tự động ghép cặp. Ghép cặp ECU áp dụng cho cả hai chế độ.",
-    "Manual Pairing…": "Ghép cặp DBC thủ công…",
-    "Manual DBC Pairing": "Ghép cặp DBC thủ công",
-    "Choose which new-baseline file each old-baseline file is compared against.":
-        "Chọn file baseline mới tương ứng với từng file baseline cũ.",
-    'Pick the new-baseline file for each old-baseline file. Old files set to "— Removed (no pair) —" are reported as removed; new files not selected in any pair are reported as added.':
-        'Chọn file mới tương ứng với từng file cũ. Report đánh dấu file cũ chọn "— Đã xóa (không ghép cặp) —" là đã xóa, và file mới chưa ghép cặp là thêm mới.',
-    "— Removed (no pair) —": "— Đã xóa (không ghép cặp) —",
-    "{old} old file(s)  ·  {new} new file(s)": "{old} file cũ  ·  {new} file mới",
-    "Duplicate Pairing": "Trùng cặp DBC",
-    "Each new DBC file can only be paired once:": "Mỗi file DBC mới chỉ được ghép một lần:",
-    "{file} (paired with {first} and {second})": "{file} (đã ghép với {first} và {second})",
-    "ECU Pairing…": "Ghép cặp ECU…",
-    "ECU Node Pairing": "Ghép cặp node ECU",
-    "Pair renamed ECU nodes to avoid routing changes caused only by node renaming.":
-        "Ghép cặp ECU đã đổi tên để bỏ qua thay đổi Tx/Rx chỉ do đổi tên node.",
-    "Pair only the nodes you want to rename. Leave the rest at Keep original name. Selected renames must use different NEW nodes. Pairing applies across the selected baselines; original names remain in the report.":
-        "Ghép các node đã đổi tên và để các node còn lại ở Giữ nguyên tên. Mỗi node NEW chỉ được ghép một lần. Ghép cặp áp dụng cho cả hai baseline và report giữ tên gốc.",
-    "OLD ECU Node": "Node ECU cũ (OLD)",
-    "NEW ECU Node": "Node ECU mới (NEW)",
-    "— Keep original name —": "— Giữ nguyên tên —",
-    "{old} OLD node(s) · {new} NEW node(s)": "{old} node OLD · {new} node NEW",
-    "Invalid ECU Pairing": "Cặp ECU không hợp lệ",
-    "Select ECUs…": "Chọn ECU…",
-    "Select Focus ECUs": "Chọn ECU để focus",
-    "Select at least one ECU node for focus": "Chọn ít nhất một node ECU để focus",
-    "Select ECU nodes to include their Tx/Rx changes across both baselines.":
-        "Chọn node ECU để xem các thay đổi Tx/Rx liên quan ở cả hai baseline.",
-    "Search ECU nodes…": "Tìm node ECU…",
-    "Select All Visible": "Chọn tất cả mục đang hiện",
-    "Clear Selection": "Bỏ chọn tất cả",
-    "No ECU nodes found in the readable DBC files.": "Không tìm thấy node ECU trong các file DBC đọc được.",
-    "Some DBC files could not be read": "Không đọc được một số file DBC",
-    "{count} DBC file(s) were skipped. Only nodes from readable files are listed. See log for details.":
-        "Đã bỏ qua {count} file DBC. Danh sách chỉ gồm node từ các file đọc được. Xem log để biết chi tiết.",
-    "Open Report": "Mở report",
-    "Run Compare": "Chạy so sánh",
-    "Execution Log": "Log thực thi",
-    "Comparison progress and results will appear here.": "Tiến độ và kết quả so sánh sẽ hiện ở đây.",
-    "Ready to compare": "Sẵn sàng so sánh",
-    "Editing DBC pairing…": "Đang ghép cặp DBC…",
-    "Loading ECU nodes…": "Đang quét node ECU…",
-    "Editing ECU pairing…": "Đang ghép cặp ECU…",
-    "Selecting focus ECUs…": "Đang chọn ECU để focus…",
-    "Comparing baselines…": "Đang so sánh baseline…",
-    "Writing Excel report…": "Đang xuất report Excel…",
-    "Report ready": "Report đã sẵn sàng",
-    "Report incomplete": "Report chưa đầy đủ",
-    "{status} · {changes} changes · {errors} file errors": "{status} · {changes} thay đổi · {errors} file lỗi",
-    "Comparison failed — see log": "So sánh thất bại. Xem log để biết chi tiết.",
-    "Invalid Input": "Input không hợp lệ",
-    "Select valid old and new baseline folders first.": "Hãy chọn hai folder baseline hợp lệ trước.",
-    "Select valid old and new DBC files.": "Chọn hai file DBC cũ và mới hợp lệ.",
-    "Select valid old and new baseline folders.": "Chọn hai folder baseline cũ và mới hợp lệ.",
-    "Load Failed": "Không tải được dữ liệu",
-    "Unable to scan folders: {error}": "Không quét được folder: {error}",
-    "ECU Load Failed": "Không quét được node ECU",
-    "Select Baseline DBC": "Chọn file baseline DBC",
-    "DBC files (*.dbc)": "File DBC (*.dbc)",
-    "Select Baseline Folder": "Chọn folder baseline",
-    "Save Excel Report": "Lưu report Excel",
-    "Excel (*.xlsx)": "Excel (*.xlsx)",
-    "Invalid Output": "Output không hợp lệ",
-    "Report path must end with .xlsx.": "Đường dẫn report phải có đuôi .xlsx.",
-    "Comparison Failed": "So sánh thất bại",
-    "Report Not Found": "Không tìm thấy report",
-    "The report file no longer exists. Run the comparison again.":
-        "File report không còn tồn tại. Hãy chạy lại so sánh.",
     "Task Running": "Đang chạy",
     "A task is still running. Quit anyway?": "Một tác vụ vẫn đang chạy. Bạn có muốn thoát không?",
-    "DBC Compare": "So sánh DBC",
     "Unable to open help file: {error}": "Không mở được file trợ giúp: {error}",
     "Unable to open the release notes: {error}": "Không mở được ghi chú phát hành: {error}",
     "No release notes available.": "Chưa có ghi chú phát hành.",
     "CAN Toolbox": "CAN Toolbox",
-    # BLF -> MAT tab
     "BLF → MAT": "BLF → MAT",
     "Convert CAN BLF logs to MATLAB MAT files or Simulink Datasets.":
         "Chuyển log CAN BLF sang file MAT của MATLAB hoặc Simulink Dataset.",
@@ -351,7 +145,6 @@ VI = {
     "Folder Not Found": "Không tìm thấy thư mục",
     "The output folder no longer exists. Run the conversion again.":
         "Thư mục output không còn tồn tại. Hãy chạy chuyển đổi lại.",
-    # Log Viewer
     "Log Viewer": "Xem log",
     "Browse BLF, ASC and MF4 logs like a CANoe trace, decoded with DBC files.": "Xem log BLF, ASC và MF4 dạng trace như CANoe, giải mã bằng file DBC.",
     "Open a BLF, ASC or MF4 log.": "Mở một log BLF, ASC hoặc MF4.",
@@ -382,7 +175,6 @@ VI = {
     "Signal": "Signal",
     "Value": "Giá trị",
     "Raw": "Raw",
-    "Unit": "Đơn vị",
     "First (s)": "Lần đầu (s)",
     "Cycle min (ms)": "Chu kỳ min (ms)",
     "Cycle avg (ms)": "Chu kỳ TB (ms)",
@@ -412,7 +204,6 @@ VI = {
     "Add DBC files": "Thêm file DBC",
     "ID": "ID",
     "Signal Values": "Giá trị signal",
-    # Log Viewer graphics
     "Search signals": "Tìm signal",
     "Add to Graph": "Thêm vào đồ thị",
     "Fit": "Vừa khung",
@@ -433,7 +224,6 @@ VI = {
     "{signal} is already plotted or the graph is full.": "{signal} đã có trên đồ thị hoặc đồ thị đã đủ.",
     "Remove Plot": "Bỏ plot",
     "Clear Graph": "Xóa đồ thị",
-    # Log Viewer export
     "Export…": "Export…",
     "Export Log": "Export log",
     "Export": "Export",
@@ -457,7 +247,6 @@ VI = {
     "Exporting {name}…": "Đang export {name}…",
     "Exported {count} frames to {name}.": "Đã export {count} frame vào {name}.",
     "Browse…": "Chọn…",
-    # Log Viewer workspace
     "Workspace": "Workspace",
     "Open Workspace…": "Mở workspace…",
     "Save Workspace…": "Lưu workspace…",
@@ -467,3 +256,5 @@ VI = {
     "The workspace log was not found: {path}": "Không tìm thấy log của workspace: {path}",
     "Workspace opened; not found in this log: {signals}": "Đã mở workspace; không có trong log này: {signals}",
 }
+
+VI = {**COMPARE_VI, **SHELL_VI}

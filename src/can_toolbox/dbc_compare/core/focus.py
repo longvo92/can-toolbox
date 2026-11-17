@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from itertools import chain
 
-from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, Message, Signal
+from .models import Change, ComparisonResult, Message, Signal
 
 
 def apply_ecu_focus(result: ComparisonResult, nodes: Iterable[str]) -> ComparisonResult:

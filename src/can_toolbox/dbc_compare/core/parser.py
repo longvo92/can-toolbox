@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, Signal
+from .models import DbcDatabase, Message, Signal
 
 EXTENDED_FRAME_FLAG = 0x80000000
 FRAME_ID_MASK = 0x1FFFFFFF

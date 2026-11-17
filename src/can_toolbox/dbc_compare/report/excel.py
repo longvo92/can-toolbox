@@ -12,9 +12,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from can_toolbox.dbc_compare.core.models import Change, ComparisonResult, FilePairSummary, Message
-from can_toolbox.dbc_compare.report._style import BORDER, HEADER_BG, HEADER_FG
-from can_toolbox.i18n import LANGUAGES, reason_text, translate
+from ..core.models import Change, ComparisonResult, FilePairSummary, Message
+from ..i18n import LANGUAGES, reason_text, translate
+from ._style import BORDER, HEADER_BG, HEADER_FG
 
 SUMMARY_ORDER = [
     "Messages Added",
@@ -183,7 +183,7 @@ def write_excel_report(result: ComparisonResult, output_path: Path, *, language:
 
 def _write_summary(sheet, result: ComparisonResult, tr) -> list[str]:
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
-    _append(sheet, [tr("CAN Toolbox  —  DBC Comparison Report"), generated])
+    _append(sheet, [tr("DBC Comparison Report"), generated])
     _append(sheet, [])
     _append(sheet, [tr("Metric"), tr("Count")])
     keys: list[str] = []

@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from can_toolbox.dbc_compare.core.comparator import DbcComparator
-from can_toolbox.dbc_compare.core.focus import apply_ecu_focus
-from can_toolbox.dbc_compare.core.models import ComparisonResult
-from can_toolbox.dbc_compare.report.excel import default_report_path, write_excel_report
+from .core.comparator import DbcComparator
+from .core.focus import apply_ecu_focus
+from .core.models import ComparisonResult
+from .report.excel import default_report_path, write_excel_report
 
 
 def compare_inputs(
