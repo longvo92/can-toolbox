@@ -1,19 +1,16 @@
-"""Application shell: header, menus and one tab per tool."""
+"""Application shell: the log viewer window plus the Tools, Settings and Help menus."""
 
 from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
-    QMainWindow,
     QMessageBox,
-    QTabWidget,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -23,10 +20,9 @@ from can_toolbox import __version__
 from can_toolbox.app_paths import changelog_path, resource_path
 from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
-from can_toolbox.ui.blf_tab import BlfTab
-from can_toolbox.ui.compare_tab import CompareTab
-from can_toolbox.ui.logview_tab import LogViewerTab
-from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons
+from can_toolbox.ui.logview.window import LogViewerWindow
+from can_toolbox.ui.tool_windows import ToolWindow
+from can_toolbox.ui.widgets import NoWheelComboBox, dialog_buttons
 
 
 def _read_resource_text(filename: str) -> str:
@@ -48,6 +44,9 @@ _LEGACY_KEYS = {
 }
 _MIGRATED_KEY = "migrated_from_dbc_compare_tool"
 
+COMPARE_TOOL = "compare"
+BLF_TOOL = "blf"
+
 
 def _legacy_settings() -> QSettings:
     return QSettings("DbcCompareTool", "DBCCompareTool")
@@ -67,59 +66,137 @@ def migrate_legacy_settings(settings: QSettings, legacy: QSettings) -> None:
     settings.sync()
 
 
-class MainWindow(QMainWindow):
-    def __init__(self) -> None:
-        super().__init__()
-        self.setWindowTitle("CAN Toolbox")
-        self.resize(1180, 820)
-        self.setMinimumSize(720, 520)
-        self._settings = QSettings("CanToolbox", "CANToolbox")
-        migrate_legacy_settings(self._settings, _legacy_settings())
-        self._gui_language = self._language_preference("gui_language", LANGUAGES, "en")
-        self._report_language = self._language_preference("report_language", ("gui", *LANGUAGES), "gui")
-        self._binder = TextBinder(self._gui_language)
-        self._busy_tabs: set[QWidget] = set()
+def _language_preference(settings: QSettings, key: str, choices: tuple[str, ...], default: str) -> str:
+    value = settings.value(key, default, type=str)
+    return value if value in choices else default
 
-        self.compare_tab = CompareTab(
-            self._settings, gui_language=self._gui_language, report_language=self._report_language,
-        )
-        self.blf_tab = BlfTab(
-            self._settings, gui_language=self._gui_language, report_language=self._report_language,
-        )
-        self.log_tab = LogViewerTab(
-            self._settings, gui_language=self._gui_language, report_language=self._report_language,
-        )
-        self.tool_tabs: tuple[QWidget, ...] = (self.compare_tab, self.blf_tab, self.log_tab)
 
-        self._build_menu()
-        self._build_layout()
-        for tab in self.tool_tabs:
-            tab.busy_changed.connect(partial(self._on_tab_busy, tab))
-        self._update_language()
+class MainWindow(LogViewerWindow):
+    """The log viewer window, with DBC Compare and BLF → MAT in their own windows."""
+
+    def __init__(self, settings: QSettings | None = None, legacy: QSettings | None = None) -> None:
+        """``settings`` and ``legacy`` default to the stores of the installed app.
+
+        Tests pass their own so a run never reads or writes the user's preferences.
+        """
+        store = settings if settings is not None else QSettings("CanToolbox", "CANToolbox")
+        migrate_legacy_settings(store, legacy if legacy is not None else _legacy_settings())
+        super().__init__(store, gui_language=_language_preference(store, "gui_language", LANGUAGES, "en"))
+
+    # -- shell menus ---------------------------------------------------------------
+
+    def _build_extra_menus(self) -> None:
+        self._tool_windows: dict[str, ToolWindow] = {}
+        self._busy_tools: set[QWidget] = set()
+        self._report_language = _language_preference(
+            self._settings, "report_language", ("gui", *LANGUAGES), "gui",
+        )
+
+        self.tools_menu = self.menuBar().addMenu("")
+        self._binder.bind(self.tools_menu.setTitle, "Tools")
+        self.compare_action = self.tools_menu.addAction("")
+        self._binder.bind(self.compare_action.setText, "DBC Compare…")
+        self.compare_action.triggered.connect(partial(self.open_tool, COMPARE_TOOL))
+        self.blf_action = self.tools_menu.addAction("")
+        self._binder.bind(self.blf_action.setText, "BLF → MAT…")
+        self.blf_action.triggered.connect(partial(self.open_tool, BLF_TOOL))
+
+        self.settings_menu = self.menuBar().addMenu("")
+        self._binder.bind(self.settings_menu.setTitle, "Settings")
+        self.language_action = self.settings_menu.addAction("")
+        self._binder.bind(self.language_action.setText, "Language…")
+        self.language_action.triggered.connect(self._show_language_settings)
+
+        help_menu = self.menuBar().addMenu("")
+        self._binder.bind(help_menu.setTitle, "Help")
+        user_guide_action = help_menu.addAction("")
+        release_note_action = help_menu.addAction("")
+        about_action = help_menu.addAction("")
+        for action, key in ((user_guide_action, "User Guide"), (release_note_action, "Release note"),
+                            (about_action, "About")):
+            self._binder.bind(action.setText, key)
+        user_guide_action.triggered.connect(
+            lambda: self._show_help_document(
+                "User Guide", "help/user_guide_vi.md" if self.gui_language == "vi" else "help/user_guide.md",
+            )
+        )
+        release_note_action.triggered.connect(self._show_release_note)
+        about_action.triggered.connect(lambda: self._show_help_document(
+            "About", "help/about_vi.md" if self.gui_language == "vi" else "help/about.md",
+        ))
+        self.busy_changed.connect(self._on_viewer_busy)
+
+    def _update_extra_language(self) -> None:
+        for window in getattr(self, "_tool_windows", {}).values():
+            window.widget.set_languages(self.gui_language, self._report_language)
+
+    # -- tool windows --------------------------------------------------------------
+
+    def _create_tool(self, key: str) -> QWidget:
+        if key == COMPARE_TOOL:
+            from can_toolbox.ui.compare_tab import CompareTab
+
+            return CompareTab(self._settings, gui_language=self.gui_language,
+                              report_language=self._report_language)
+        from can_toolbox.ui.blf_tab import BlfTab
+
+        return BlfTab(self._settings, gui_language=self.gui_language, report_language=self._report_language)
+
+    def tool_window(self, key: str) -> ToolWindow:
+        """The window for ``key``, created (hidden) on first use."""
+        window = self._tool_windows.get(key)
+        if window is None:
+            widget = self._create_tool(key)
+            window = ToolWindow(self, widget, self._binder, settings=self._settings, key=key)
+            widget.busy_changed.connect(partial(self._on_tool_busy, widget))
+            self._tool_windows[key] = window
+        return window
+
+    def open_tool(self, key: str) -> ToolWindow:
+        window = self.tool_window(key)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
+
+    @property
+    def compare_tab(self):
+        return self.tool_window(COMPARE_TOOL).widget
+
+    @property
+    def blf_tab(self):
+        return self.tool_window(BLF_TOOL).widget
+
+    def open_tools(self) -> tuple[QWidget, ...]:
+        return tuple(window.widget for window in self._tool_windows.values())
+
+    # -- busy state ----------------------------------------------------------------
+
+    def _on_viewer_busy(self, busy: bool) -> None:
+        self._on_tool_busy(self, busy)
+
+    def _on_tool_busy(self, owner: QWidget, busy: bool) -> None:
+        """Lock language changes while any tool runs; every window stays usable."""
+        if busy:
+            self._busy_tools.add(owner)
+        else:
+            self._busy_tools.discard(owner)
+        idle = not self._busy_tools
+        self.settings_menu.setEnabled(idle)
+        self.language_action.setEnabled(idle)
+
+    def busy_widgets(self) -> list[QWidget]:
+        running: list[QWidget] = [self] if self.is_busy() else []
+        running += [widget for widget in self.open_tools() if widget.is_busy()]
+        return running
 
     # -- languages -----------------------------------------------------------------
 
-    def _language_preference(self, key: str, choices: tuple[str, ...], default: str) -> str:
-        value = self._settings.value(key, default, type=str)
-        return value if value in choices else default
-
-    def _tr(self, key: str, **parameters: object) -> str:
-        return self._binder.tr(key, **parameters)
-
-    def _update_language(self) -> None:
-        self._binder.set_language(self._gui_language)
-        for index, tab in enumerate(self.tool_tabs):
-            self.tabs.setTabText(index, self._tr(tab.title_key))
-        self._update_subtitle()
-
     def _set_languages(self, gui_language: str, report_language: str) -> None:
-        self._gui_language = gui_language
         self._report_language = report_language
         self._settings.setValue("gui_language", gui_language)
         self._settings.setValue("report_language", report_language)
-        for tab in self.tool_tabs:
-            tab.set_languages(gui_language, report_language)
-        self._update_language()
+        self.set_gui_language(gui_language)
 
     def _show_language_settings(self) -> None:
         dialog = QDialog(self)
@@ -132,7 +209,7 @@ class MainWindow(QMainWindow):
         form.setVerticalSpacing(10)
         combos = []
         for key, current, follow_gui in (
-            ("GUI Language", self._gui_language, False),
+            ("GUI Language", self.gui_language, False),
             ("Report Language", self._report_language, True),
         ):
             combo = NoWheelComboBox(dialog)
@@ -149,7 +226,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(form)
 
         buttons = dialog_buttons(
-            self._gui_language, QDialogButtonBox.StandardButton.Save, QDialogButtonBox.StandardButton.Cancel,
+            self.gui_language, QDialogButtonBox.StandardButton.Save, QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
@@ -160,86 +237,10 @@ class MainWindow(QMainWindow):
         finally:
             dialog.deleteLater()
 
-    # -- layout --------------------------------------------------------------------
-
-    def _build_menu(self) -> None:
-        self.settings_menu = self.menuBar().addMenu("")
-        self._binder.bind(self.settings_menu.setTitle, "Settings")
-        self.language_action = self.settings_menu.addAction("")
-        self._binder.bind(self.language_action.setText, "Language…")
-        self.language_action.triggered.connect(self._show_language_settings)
-
-        help_menu = self.menuBar().addMenu("Help")
-        user_guide_action = help_menu.addAction("User Guide")
-        release_note_action = help_menu.addAction("Release note")
-        about_action = help_menu.addAction("About")
-        self._binder.bind(help_menu.setTitle, "Help")
-        for action, key in ((user_guide_action, "User Guide"), (release_note_action, "Release note"), (about_action, "About")):
-            self._binder.bind(action.setText, key)
-        user_guide_action.triggered.connect(
-            lambda: self._show_help_document(
-                "User Guide", "help/user_guide_vi.md" if self._gui_language == "vi" else "help/user_guide.md",
-            )
-        )
-        release_note_action.triggered.connect(self._show_release_note)
-        about_action.triggered.connect(lambda: self._show_help_document(
-            "About", "help/about_vi.md" if self._gui_language == "vi" else "help/about.md",
-        ))
-
-    def _build_layout(self) -> None:
-        title = self._binder.widget(QLabel, "CAN Toolbox")
-        title.setObjectName("appTitle")
-        version_label = QLabel(f"v{__version__}")
-        version_label.setObjectName("versionBadge")
-
-        title_row = QHBoxLayout()
-        title_row.setSpacing(10)
-        title_row.addWidget(title)
-        title_row.addWidget(version_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        title_row.addStretch()
-
-        self.subtitle = QLabel()
-        self.subtitle.setObjectName("appSubtitle")
-        self.subtitle.setWordWrap(True)
-
-        header = QVBoxLayout()
-        header.setSpacing(2)
-        header.addLayout(title_row)
-        header.addWidget(self.subtitle)
-
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("toolTabs")
-        self.tabs.setDocumentMode(True)
-        for tab in self.tool_tabs:
-            self.tabs.addTab(tab, "")
-        self.tabs.currentChanged.connect(self._update_subtitle)
-
-        central = QWidget()
-        central_layout = QVBoxLayout(central)
-        central_layout.setContentsMargins(16, 12, 16, 12)
-        central_layout.setSpacing(10)
-        central_layout.addLayout(header)
-        central_layout.addWidget(self.tabs, 1)
-        self.setCentralWidget(central)
-
-    def _update_subtitle(self) -> None:
-        tab = self.tabs.currentWidget()
-        self.subtitle.setText(self._tr(tab.subtitle_key) if tab is not None else "")
-
-    # -- busy state ----------------------------------------------------------------
-
-    def _on_tab_busy(self, tab: QWidget, busy: bool) -> None:
-        """Lock language changes while any tool runs; tabs stay switchable."""
-        if busy:
-            self._busy_tabs.add(tab)
-        else:
-            self._busy_tabs.discard(tab)
-        idle = not self._busy_tabs
-        self.settings_menu.setEnabled(idle)
-        self.language_action.setEnabled(idle)
+    # -- shutdown ------------------------------------------------------------------
 
     def closeEvent(self, event) -> None:
-        running = [tab for tab in self.tool_tabs if tab.is_busy()]
+        running = self.busy_widgets()
         if running:
             reply = QMessageBox.question(
                 self,
@@ -251,9 +252,11 @@ class MainWindow(QMainWindow):
             if reply != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
-            for tab in running:
-                tab.stop_workers()
-        event.accept()
+            for widget in running:
+                widget.stop_workers()
+        for window in self._tool_windows.values():
+            window.close()
+        super().closeEvent(event)
 
     # -- help ----------------------------------------------------------------------
 
@@ -285,7 +288,7 @@ class MainWindow(QMainWindow):
         viewer = QTextBrowser()
         viewer.setOpenExternalLinks(True)
         viewer.setMarkdown(content)
-        buttons = dialog_buttons(self._gui_language, QDialogButtonBox.StandardButton.Close)
+        buttons = dialog_buttons(self.gui_language, QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(viewer)
         layout.addWidget(buttons)

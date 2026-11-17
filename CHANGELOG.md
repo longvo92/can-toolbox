@@ -19,6 +19,8 @@ for the procedure.
 
 ### Changed
 
+- The app opens straight into the Log Viewer. Trace, Signal Browser and Details are dockable panels you can hide or rearrange from **View**, and the layout comes back the way you left it.
+- **DBC Compare** and **BLF → MAT** now open from the **Tools** menu, each in its own window, so a comparison can run while you read a log.
 - **BLF → MAT** reads and decodes logs many times faster; output files are unchanged.
 - The conversion log names BLF content that MAT files cannot carry, such as markers or comments.
 

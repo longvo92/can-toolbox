@@ -30,7 +30,7 @@ else:
         ManualPairingDialog,
     )
     from can_toolbox.ui.ecu_focus import EcuFocusDialog
-    from can_toolbox.ui.main_window import MainWindow
+    from can_toolbox.ui.main_window import COMPARE_TOOL, MainWindow
     from can_toolbox.ui.style import configure_appearance
 
 
@@ -60,9 +60,11 @@ class GuiInputTests(unittest.TestCase):
         self.old.write_text(_DBC.format(sender="OldNode"), encoding="utf-8")
         self.new.write_text(_DBC.format(sender="NewNode"), encoding="utf-8")
         self.settings = QSettings(str(self.root / "settings.ini"), QSettings.Format.IniFormat)
-        with patch(f"{_SHELL}.QSettings", return_value=self.settings):
-            self.window = MainWindow()
-        self.tab = self.window.compare_tab
+        # An empty 0.8.0 store: a test never reads the preferences of the installed app.
+        self.legacy = QSettings(str(self.root / "legacy.ini"), QSettings.Format.IniFormat)
+        self.window = MainWindow(self.settings, legacy=self.legacy)
+        self.compare_window = self.window.tool_window(COMPARE_TOOL)
+        self.tab = self.compare_window.widget
         self.addCleanup(self._close_window)
 
     def _close_window(self):
@@ -226,7 +228,8 @@ class GuiInputTests(unittest.TestCase):
         self.assertEqual(kinds, {"Added", "Removed", "Modified", "Renamed"})
 
     def test_language_dialog_is_in_settings_before_help_and_respects_cancel(self):
-        self.assertEqual([action.text() for action in self.window.menuBar().actions()], ["Settings", "Help"])
+        self.assertEqual([action.text() for action in self.window.menuBar().actions()],
+                         ["File", "View", "Tools", "Settings", "Help"])
         action, = self.window.settings_menu.actions()
         self.assertEqual(action.text(), "Language…")
         self.assertEqual(self.tab.findChildren(QComboBox), [self.tab.input_mode])
@@ -245,14 +248,15 @@ class GuiInputTests(unittest.TestCase):
         self.assertIsNone(self.settings.value("gui_language"))
         with patch.object(QDialog, "exec", new=lambda dialog: choose_languages(dialog, True)):
             action.trigger()
-        self.assertEqual([item.text() for item in self.window.menuBar().actions()], ["Cài đặt", "Trợ giúp"])
+        self.assertEqual([item.text() for item in self.window.menuBar().actions()],
+                         ["File", "Hiển thị", "Công cụ", "Cài đặt", "Trợ giúp"])
         self.assertEqual(action.text(), "Ngôn ngữ…")
         self.assertEqual(self.tab.run_button.text(), "Chạy so sánh")
         self.assertEqual(self.settings.value("gui_language"), "vi")
         self.assertEqual(self.settings.value("report_language"), "en")
 
     def test_release_note_menu_hides_development_notes(self):
-        help_menu = self.window.menuBar().actions()[1].menu()
+        help_menu = self.window.menuBar().actions()[-1].menu()
         action = next(item for item in help_menu.actions() if item.text() == "Release note")
         changelog = self.root / "CHANGELOG.md"
         released = "## [2.0.0] — 2026-11-06\n\nPublic note.\n\n## [1.0.0] - 2026-10-01\n\nOlder note.\n"
@@ -281,10 +285,10 @@ class GuiInputTests(unittest.TestCase):
         self.app.setPalette(palette)
         configure_appearance(self.app)
         self.window._set_languages("vi", "gui")
-        self.window.show()
+        self.compare_window.show()
         for width, height in ((720, 520), (1000, 780)):
             with self.subTest(width=width, height=height):
-                self.window.resize(width, height)
+                self.compare_window.resize(width, height)
                 self.app.processEvents()
                 scroll = self.tab.findChild(QScrollArea, "workspaceScroll")
                 self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
@@ -326,10 +330,9 @@ class GuiInputTests(unittest.TestCase):
                     workbook.close()
 
         self.window._set_languages("vi", "en")
-        with patch(f"{_SHELL}.QSettings", return_value=self.settings):
-            restored = MainWindow()
+        restored = MainWindow(self.settings, legacy=self.legacy)
         self.addCleanup(restored.deleteLater)
-        self.assertEqual(restored._gui_language, "vi")
+        self.assertEqual(restored.gui_language, "vi")
         self.assertEqual(restored._report_language, "en")
         self.assertEqual(restored.compare_tab.run_button.text(), "Chạy so sánh")
         self.assertEqual(restored.compare_tab.new_input.text(), str(self.new))

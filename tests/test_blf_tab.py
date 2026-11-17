@@ -1,4 +1,4 @@
-"""BLF -> MAT tab driven through the real main window (offscreen Qt)."""
+"""BLF -> MAT tool driven through its own window on the real shell (offscreen Qt)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
 from scipy.io import loadmat  # noqa: E402
 
 from can_toolbox.ui.blf_tab import ConvertWorker, SheetPickerDialog  # noqa: E402
-from can_toolbox.ui.main_window import MainWindow  # noqa: E402
+from can_toolbox.ui.main_window import BLF_TOOL, COMPARE_TOOL, MainWindow  # noqa: E402
 
 pytestmark = pytest.mark.gui
 
@@ -36,10 +36,15 @@ def settings(tmp_path):
 
 
 @pytest.fixture
-def window(app, settings):
-    with patch(f"{_SHELL}.QSettings", return_value=settings):
-        window = MainWindow()
-    window.tabs.setCurrentWidget(window.blf_tab)
+def legacy(tmp_path):
+    """An empty 0.8.0 store: a test never reads the preferences of the installed app."""
+    return QSettings(str(tmp_path / "legacy.ini"), QSettings.Format.IniFormat)
+
+
+@pytest.fixture
+def window(app, settings, legacy):
+    window = MainWindow(settings, legacy=legacy)
+    window.open_tool(BLF_TOOL)
     yield window
     window.blf_tab.wait_for_workers()
     window.close()
@@ -54,14 +59,14 @@ def wait_until(condition, timeout=20):
     assert condition(), "Qt worker did not finish in time"
 
 
-def test_window_has_both_tools_and_switches_subtitle(window):
-    titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
-    assert titles == ["DBC Compare", "BLF → MAT", "Log Viewer"]
-    assert window.subtitle.text().startswith("Convert CAN BLF logs")
-    window.tabs.setCurrentWidget(window.compare_tab)
-    assert window.subtitle.text().startswith("Compare DBC baselines")
+def test_tools_open_as_windows_with_their_own_titles(window):
+    blf_window = window.tool_window(BLF_TOOL)
+    compare_window = window.tool_window(COMPARE_TOOL)
+    assert blf_window.isVisible() and not compare_window.isVisible()
+    assert [w.windowTitle() for w in (blf_window, compare_window)] == ["BLF → MAT", "DBC Compare"]
+    assert window.windowTitle() == "CAN Toolbox"
     window._set_languages("vi", "gui")
-    assert window.tabs.tabText(0) == "So sánh DBC"
+    assert compare_window.windowTitle() == "So sánh DBC"
     assert window.blf_tab.convert_button.text() == "Chuyển đổi"
 
 
@@ -75,7 +80,7 @@ def test_missing_blf_warns_without_starting_a_worker(window):
     assert tab.convert_button.isEnabled()
 
 
-def test_blf_and_dbc_convert_through_the_worker_and_save_inputs(window, sample, settings):
+def test_blf_and_dbc_convert_through_the_worker_and_save_inputs(window, sample, settings, legacy):
     tab = window.blf_tab
     tab.blf_input.setText(str(sample["blf"]))
     tab.dbc_input.setText(str(sample["root"] / "dbc"))
@@ -98,8 +103,7 @@ def test_blf_and_dbc_convert_through_the_worker_and_save_inputs(window, sample, 
     scenario = loadmat(sample["output"] / "sample_signals.mat", simplify_cells=True)["Scenario"]
     assert scenario["Sample"]["SpeedCAN"]["Data"].tolist() == [10, 30]
 
-    with patch(f"{_SHELL}.QSettings", return_value=settings):
-        restored = MainWindow()
+    restored = MainWindow(settings, legacy=legacy)
     try:
         assert restored.blf_tab.blf_input.text() == str(sample["blf"])
         assert restored.blf_tab.dbc_input.text() == str(sample["root"] / "dbc")
@@ -183,11 +187,10 @@ def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):
                        ("last_report_path", r"C:\r.xlsx"), ("report_path_is_explicit", True)):
         legacy.setValue(key, value)
     settings = QSettings(str(tmp_path / "new.ini"), QSettings.Format.IniFormat)
-    with patch(f"{_SHELL}.QSettings", return_value=settings), \
-            patch(f"{_SHELL}._legacy_settings", return_value=legacy):
-        window = MainWindow()
+    with patch(f"{_SHELL}._legacy_settings", return_value=legacy):
+        window = MainWindow(settings)
     try:
-        assert window._gui_language == "vi" and window._report_language == "en"
+        assert window.gui_language == "vi" and window._report_language == "en"
         tab = window.compare_tab
         assert tab._files_mode()
         assert (tab.old_input.text(), tab.new_input.text()) == (r"C:\old", r"C:\new")
