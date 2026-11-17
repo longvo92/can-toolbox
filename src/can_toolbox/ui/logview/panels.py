@@ -9,15 +9,14 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QTableView,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
-    QTreeWidget,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -27,36 +26,26 @@ from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder
 STATISTICS_COLUMNS = (
     "Chn", "ID", "Name", "Count", "First (s)", "Cycle min (ms)", "Cycle avg (ms)", "Cycle max (ms)",
 )
-SIGNAL_VALUE_COLUMNS = ("Signal", "Value", "Raw", "Unit")
 
 
-def build_trace_view(model) -> QTableView:
-    """CANoe-style trace table: fixed row height, monospace columns, single row selection."""
-    trace = QTableView()
+def build_trace_view(model) -> QTreeView:
+    """CANoe-style trace: one row per frame, expandable into its decoded signals."""
+    trace = QTreeView()
     trace.setObjectName("traceView")
     trace.setModel(model)
+    trace.setUniformRowHeights(True)  # millions of rows: never measure them
     trace.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     trace.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+    trace.setAllColumnsShowFocus(True)
     trace.setAlternatingRowColors(True)
-    trace.setShowGrid(False)
     trace.setWordWrap(False)
+    trace.setExpandsOnDoubleClick(True)
     trace.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    trace.verticalHeader().hide()
-    trace.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-    trace.verticalHeader().setDefaultSectionSize(22)
-    header = trace.horizontalHeader()
+    header = trace.header()
     header.setStretchLastSection(True)
-    for column, width in enumerate((120, 44, 90, 180, 56, 90, 40)):
+    for column, width in enumerate((150, 44, 90, 200, 56, 90, 40)):
         header.resizeSection(column, width)
     return trace
-
-
-def build_signal_values() -> QTreeWidget:
-    tree = QTreeWidget()
-    tree.setColumnCount(len(SIGNAL_VALUE_COLUMNS))
-    tree.setRootIsDecorated(False)
-    tree.setAlternatingRowColors(True)
-    return tree
 
 
 def build_statistics_table() -> QTableWidget:
@@ -93,19 +82,33 @@ def fill_statistics(table: QTableWidget, stats) -> None:
     table.resizeColumnsToContents()
 
 
+def wrap_filter_bar(bar: QWidget) -> QScrollArea:
+    """Keep the filter row one line: a narrow window scrolls it instead of growing."""
+    area = QScrollArea()
+    area.setObjectName("filterScroll")
+    area.setWidget(bar)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    area.setFixedHeight(bar.sizeHint().height() + 12)
+    return area
+
+
 class FilterBar(QWidget):
     """Trace filter, display mode and find controls; owns no log state."""
 
     filter_changed = Signal()
     time_mode_changed = Signal()
     find_requested = Signal(bool)
+    expand_requested = Signal(bool)
 
     def __init__(self, binder: TextBinder, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._binder = binder
         self.filter_input = QLineEdit()
         self.filter_input.setClearButtonEnabled(True)
-        self.filter_input.setMinimumWidth(220)
+        self.filter_input.setMinimumWidth(170)
         self.channel_input = NoWheelComboBox()
         self.direction_input = NoWheelComboBox()
         for key, value in (("All", "all"), ("Rx", "rx"), ("Tx", "tx")):
@@ -113,35 +116,50 @@ class FilterBar(QWidget):
         self.errors_input = QCheckBox()
         self.errors_input.setChecked(True)
         self.mode_input = NoWheelComboBox()
+        self.mode_input.setMinimumWidth(130)
         self.mode_input.addItem("Chronological", "chronological")
         self.mode_input.addItem("Fixed position", "fixed")
         self.time_input = NoWheelComboBox()
+        self.time_input.setMinimumWidth(110)
         self.time_input.addItem("Relative", "relative")
         self.time_input.addItem("Absolute", "absolute")
         self.find_input = QLineEdit()
         self.find_input.setClearButtonEnabled(True)
-        self.find_input.setMinimumWidth(140)
+        self.find_input.setMinimumWidth(110)
         binder.bind(self.filter_input.setPlaceholderText, "IDs, ranges or names: 100, 200-2FF, 18FF00x, Engine")
         binder.bind(self.find_input.setPlaceholderText, "ID or name")
         self.find_prev_button = QPushButton("◀")
         self.find_next_button = QPushButton("▶")
         binder.bind(self.find_prev_button.setToolTip, "Find previous")
         binder.bind(self.find_next_button.setToolTip, "Find next")
+        self.expand_button = QPushButton("+")
+        self.collapse_button = QPushButton("−")
+        binder.bind(self.expand_button.setToolTip, "Expand All")
+        binder.bind(self.collapse_button.setToolTip, "Collapse All")
+        # Square buttons: the bar is long enough without them taking button width.
+        for button in (self.find_prev_button, self.find_next_button,
+                       self.expand_button, self.collapse_button):
+            button.setObjectName("compactButton")
+            button.setFixedWidth(30)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(6)
-        self._add_labeled(layout, "Filter", self.filter_input, 3)
+        layout.setContentsMargins(6, 3, 6, 3)
+        layout.setSpacing(5)
+        # The fields with a placeholder name themselves; the combos get a label.
+        self._add_labeled(layout, "Filter", self.filter_input, 3, labelled=False)
         self._add_labeled(layout, "Channel", self.channel_input)
         self._add_labeled(layout, "Direction", self.direction_input)
         layout.addWidget(self.errors_input)
-        layout.addSpacing(12)
-        self._add_labeled(layout, "Mode", self.mode_input)
-        self._add_labeled(layout, "Time", self.time_input)
-        layout.addSpacing(12)
-        self._add_labeled(layout, "Find", self.find_input, 2)
+        layout.addSpacing(8)
+        self._add_labeled(layout, "Mode", self.mode_input, labelled=False)
+        self._add_labeled(layout, "Time", self.time_input, labelled=False)
+        layout.addSpacing(8)
+        self._add_labeled(layout, "Find", self.find_input, 2, labelled=False)
         layout.addWidget(self.find_prev_button)
         layout.addWidget(self.find_next_button)
+        layout.addSpacing(8)
+        layout.addWidget(self.expand_button)
+        layout.addWidget(self.collapse_button)
 
         self.filter_input.returnPressed.connect(self.filter_changed)
         self.filter_input.textChanged.connect(lambda text: self.filter_changed.emit() if not text else None)
@@ -152,13 +170,20 @@ class FilterBar(QWidget):
         self.find_input.returnPressed.connect(partial(self.find_requested.emit, True))
         self.find_next_button.clicked.connect(partial(self.find_requested.emit, True))
         self.find_prev_button.clicked.connect(partial(self.find_requested.emit, False))
+        self.expand_button.clicked.connect(partial(self.expand_requested.emit, True))
+        self.collapse_button.clicked.connect(partial(self.expand_requested.emit, False))
         self.update_language()
 
-    def _add_labeled(self, layout: QHBoxLayout, key: str, widget: QWidget, stretch: int = 0) -> None:
-        label = self._binder.widget(QLabel, key)
-        label.setBuddy(widget)
+    def _add_labeled(self, layout: QHBoxLayout, key: str, widget: QWidget, stretch: int = 0, *,
+                     labelled: bool = True) -> None:
+        """Add ``widget`` with its name, as a label or only as a tooltip."""
         self._binder.bind(widget.setAccessibleName, key)
-        layout.addWidget(label)
+        if labelled:
+            label = self._binder.widget(QLabel, key)
+            label.setBuddy(widget)
+            layout.addWidget(label)
+        else:
+            self._binder.bind(widget.setToolTip, key)
         layout.addWidget(widget, stretch)
 
     # -- state ---------------------------------------------------------------------
@@ -191,7 +216,7 @@ class FilterBar(QWidget):
     def set_controls_enabled(self, enabled: bool) -> None:
         for widget in (self.filter_input, self.channel_input, self.direction_input, self.errors_input,
                        self.mode_input, self.time_input, self.find_input, self.find_prev_button,
-                       self.find_next_button):
+                       self.find_next_button, self.expand_button, self.collapse_button):
             widget.setEnabled(enabled)
 
     def restore_display_modes(self, mode: str, time_mode: str) -> None:
