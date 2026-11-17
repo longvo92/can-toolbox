@@ -51,6 +51,45 @@ def test_themes_differ_and_name_their_graphics_colours():
         assert all(value.startswith("#") for value in theme.curves)
 
 
+def _luminance(color: str) -> float:
+    channels = []
+    for index in (1, 3, 5):
+        value = int(color[index:index + 2], 16) / 255
+        channels.append(value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
+    red, green, blue = channels
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def contrast(first: str, second: str) -> float:
+    """WCAG contrast ratio, 1 (identical) to 21 (black on white)."""
+    light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+@pytest.mark.parametrize("theme", [app_theme.LIGHT, app_theme.DARK], ids=lambda t: t.name)
+def test_text_stays_readable_in_both_themes(theme):
+    """Body text needs 4.5:1, large or secondary text and lines 3:1 (WCAG AA)."""
+    for token, background, minimum in (
+        ("text", "window", 4.5), ("text", "surface", 4.5), ("heading", "window", 4.5),
+        ("subtle", "chrome", 4.5), ("muted", "window", 3.0), ("muted_strong", "window", 4.5),
+        ("accent", "window", 3.0), ("error", "surface", 4.0), ("text", "alternate", 4.5),
+        ("text", "accent_soft", 4.5), ("accent_text", "accent", 4.5), ("link", "surface", 4.0),
+        ("text", "dock_title", 4.5), ("plot_fg", "plot_bg", 4.5), ("chevron", "surface", 3.0),
+    ):
+        ratio = contrast(getattr(theme, token), getattr(theme, background))
+        assert ratio >= minimum, f"{theme.name}: {token} on {background} is {ratio:.2f}:1"
+
+
+@pytest.mark.parametrize("theme", [app_theme.LIGHT, app_theme.DARK], ids=lambda t: t.name)
+def test_curves_and_cursors_stand_out_on_the_plot(theme):
+    for index, color in enumerate(theme.curves):
+        ratio = contrast(color, theme.plot_bg)
+        assert ratio >= 3.0, f"{theme.name}: curve {index} ({color}) is {ratio:.2f}:1 on the plot"
+    for token in ("cursor_primary", "cursor_secondary"):
+        ratio = contrast(getattr(theme, token), theme.plot_bg)
+        assert ratio >= 3.0, f"{theme.name}: {token} is {ratio:.2f}:1 on the plot"
+
+
 def test_only_the_theme_module_holds_colours():
     """A hard-coded hex in a widget would survive the theme switch unchanged."""
     offenders = []
@@ -105,6 +144,29 @@ def test_graph_panel_follows_the_theme(app):
         assert panel.canvas.backgroundBrush().color().name() == app_theme.DARK.plot_bg
     finally:
         panel.deleteLater()
+
+
+def test_help_text_is_rendered_in_the_current_theme(app, tmp_path):
+    """QTextBrowser paints markdown from its own document styles, not the stylesheet."""
+    from can_toolbox.ui.main_window import MainWindow
+
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    settings.setValue("theme", "dark")  # the window applies the stored preference
+    legacy = QSettings(str(tmp_path / "legacy.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings, legacy=legacy)
+    assert app_theme.manager.theme is app_theme.DARK
+    try:
+        viewer = window.markdown_viewer("# Title\n\n[link](https://example.test)\n")
+        styles = viewer.document().defaultStyleSheet()
+        assert app_theme.DARK.link in styles and app_theme.DARK.code_bg in styles
+        assert "link" in viewer.toPlainText()
+        app_theme.configure_appearance(app, "light")
+        viewer = window.markdown_viewer("# Title")
+        assert app_theme.LIGHT.link in viewer.document().defaultStyleSheet()
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
 
 
 def test_matlab_setting_moves_out_of_the_blf_tool(tmp_path):

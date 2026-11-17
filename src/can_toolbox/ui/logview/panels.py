@@ -38,6 +38,7 @@ def build_trace_view(model) -> QTableView:
     trace.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     trace.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     trace.setAlternatingRowColors(True)
+    trace.setShowGrid(False)
     trace.setWordWrap(False)
     trace.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     trace.verticalHeader().hide()
