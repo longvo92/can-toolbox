@@ -9,11 +9,19 @@ import subprocess
 import tempfile
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+
+from can_toolbox.blf_mat.config import (
+    InputCanMapping,
+    InputForce,
+    MappingConfig,
+    empty_config,
+    norm,
+)
 
 # Heavy numeric packages load on the first conversion, so the window opens
 # without importing numpy or scipy.
@@ -76,15 +84,6 @@ def start_step(index: int, total: int, title: str) -> float:
 
 def finish_step(started_at: float, summary: str) -> None:
     log(f"  OK | {summary} | {time.perf_counter() - started_at:.2f}s")
-
-
-def norm(s: Any) -> str:
-    if s is None:
-        return ""
-    s = str(s).strip()
-    if not s or s.lower() in {"nan", "none"}:
-        return ""
-    return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
 def last_token(s: Any) -> str:
@@ -188,193 +187,18 @@ def cast_signal_data(values: Any, dtype: str) -> Any:
 
 @dataclass
 class SelectedPaths:
-    excel: Path | None
-    dbc_folder: Path | None
+    """One conversion run: the logs (or tables already in memory) and their definitions."""
+
     blf_files: list[Path]
-    schema_files: list[Path]
     output_folder: Path
-    mapping_config: Path | None
-    matlab_exe: Path | None
+    dbc_sources: list[Path] = field(default_factory=list)
+    excel: Path | None = None
+    config: MappingConfig = field(default_factory=empty_config)
+    matlab_exe: Path | None = None
     output_format: str = "mat"
-    input_schema: Path | None = None
-    output_schema: Path | None = None
-    input_sheets: tuple[str, ...] = ()
-    output_sheets: tuple[str, ...] = ()
-    element_column: str | None = None
-    can_column: str | None = None
-    interface_column: str | None = None
-    dtype_column: str | None = None
-    header_row: int | None = None
-
-
-@dataclass(frozen=True)
-class InputCanMapping:
-    interface: str
-    element: str
-    can_signal: str
-    formula: str = ""
-    status_mapping: dict[float, float] | None = None
-
-    @property
-    def target_key(self) -> tuple[str, str]:
-        return norm(self.interface), norm(self.element)
-
-    @property
-    def target_name(self) -> str:
-        return f"{self.interface}.{self.element}"
-
-
-@dataclass(frozen=True)
-class InputForce:
-    """Constant value for an input element that is not sourced from CAN."""
-
-    interface: str
-    element: str
-    value: float
-
-    @property
-    def target_key(self) -> tuple[str, str]:
-        return norm(self.interface), norm(self.element)
-
-    @property
-    def target_name(self) -> str:
-        return f"{self.interface}.{self.element}"
-
-
-def load_mapping_config(config_path: Path | None) -> dict[str, Any]:
-    """Read the shared YAML configuration once for all conversion options."""
-    if config_path is None:
-        return {}
-    try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise RuntimeError(f"Invalid YAML mapping config {config_path}: {exc}") from exc
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise RuntimeError("Mapping config root must be a YAML mapping/object.")
-    return raw
-
-
-def parse_excel_skip_keywords(raw: dict[str, Any]) -> tuple[str, ...]:
-    keywords = raw.get("excel_skip_keywords", [])
-    if not isinstance(keywords, list):
-        raise RuntimeError("'excel_skip_keywords' must be a YAML list of non-empty strings.")
-    if any(not isinstance(keyword, str) or not keyword.strip() for keyword in keywords):
-        raise RuntimeError("'excel_skip_keywords' must contain only non-empty strings.")
-    return tuple(dict.fromkeys(keyword.strip().casefold() for keyword in keywords))
-
-
-def parse_input_mapping_config(
-    raw: dict[str, Any],
-) -> tuple[list[InputCanMapping], list[InputForce]]:
-    """Parse input CAN mappings and non-CAN constant forces from YAML data.
-
-    ``input_mappings`` maps an Interface.DataElement to a CAN signal, with
-    optional status/formula transforms.
-
-    ``input_forces`` sets a constant model value for inputs that are NOT
-    sourced from CAN. A forced input bypasses CAN decoding and is held constant
-    over the entire BLF/simulation duration.
-    """
-    entries = raw.get("input_mappings", [])
-    if entries is None:
-        entries = []
-    if not isinstance(entries, list):
-        raise RuntimeError("'input_mappings' must be a YAML list.")
-
-    mappings: list[InputCanMapping] = []
-    seen_mapping_targets: set[tuple[str, str]] = set()
-
-    for idx, item in enumerate(entries, start=1):
-        if not isinstance(item, dict):
-            raise RuntimeError(f"input_mappings[{idx}] must be a YAML mapping/object.")
-        if item.get("enabled", True) is False:
-            continue
-
-        interface = str(item.get("interface", "") or "").strip()
-        element = str(item.get("element", "") or "").strip()
-        can_signal = str(item.get("can_signal", "") or "").strip()
-        formula = str(item.get("formula", "") or "").strip()
-        status_mapping = parse_status_mapping(
-            item.get("status_mapping", None),
-            f"input_mappings[{idx}].status_mapping",
-        )
-
-        if not interface or not element or not can_signal:
-            raise RuntimeError(
-                f"input_mappings[{idx}] requires non-empty "
-                "'interface', 'element', and 'can_signal'."
-            )
-
-        if formula:
-            validate_signal_formula(formula)
-
-        mapping = InputCanMapping(
-            interface=interface,
-            element=element,
-            can_signal=can_signal,
-            formula=formula,
-            status_mapping=status_mapping,
-        )
-        if mapping.target_key in seen_mapping_targets:
-            raise RuntimeError(
-                f"Duplicate input mapping target in YAML: {mapping.target_name}. "
-                "Each Interface.Element can have only one configured CAN source."
-            )
-        seen_mapping_targets.add(mapping.target_key)
-        mappings.append(mapping)
-
-    force_entries = raw.get("input_forces", [])
-    if force_entries is None:
-        force_entries = []
-    if not isinstance(force_entries, list):
-        raise RuntimeError("'input_forces' must be a YAML list.")
-
-    forces: list[InputForce] = []
-    seen_force_targets: set[tuple[str, str]] = set()
-
-    for idx, item in enumerate(force_entries, start=1):
-        if not isinstance(item, dict):
-            raise RuntimeError(f"input_forces[{idx}] must be a YAML mapping/object.")
-        if item.get("enabled", True) is False:
-            continue
-
-        interface = str(item.get("interface", "") or "").strip()
-        element = str(item.get("element", "") or "").strip()
-        raw_value = item.get("value", None)
-
-        if not interface or not element:
-            raise RuntimeError(f"input_forces[{idx}] requires non-empty 'interface' and 'element'.")
-        if raw_value is None or raw_value == "":
-            raise RuntimeError(f"input_forces[{idx}] requires numeric 'value'.")
-
-        if isinstance(raw_value, bool):
-            value = float(int(raw_value))
-        else:
-            try:
-                value = float(raw_value)
-            except (TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    f"input_forces[{idx}].value must be numeric, got {raw_value!r}."
-                ) from exc
-
-        if not math.isfinite(value):
-            raise RuntimeError(f"input_forces[{idx}].value must be finite, got {raw_value!r}.")
-
-        force = InputForce(interface=interface, element=element, value=value)
-        if force.target_key in seen_force_targets:
-            raise RuntimeError(f"Duplicate input force target in YAML: {force.target_name}.")
-        if force.target_key in seen_mapping_targets:
-            raise RuntimeError(
-                "Input target is configured in both input_mappings and input_forces: "
-                f"{force.target_name}. input_forces is only for non-CAN inputs."
-            )
-
-        seen_force_targets.add(force.target_key)
-        forces.append(force)
-
-    return mappings, forces
+    # Frames the caller already holds, for example the cut the Log Viewer exports.
+    tables: dict[Path, Any] = field(default_factory=dict)
+    base_name: str = ""
 
 
 # -----------------------------------------------------------------------------
@@ -600,87 +424,6 @@ def _strip_schema_inline_comment(line: str) -> str:
     return line.split("#", 1)[0].strip()
 
 
-def load_signal_schema(schema_files: list[Path]) -> list[dict[str, Any]]:
-    """Read Interface.Element : datatype files and create interface metadata.
-
-    Dimension is always 1. Duplicate identical lines are accepted. A duplicate
-    Interface.Element with different datatypes is rejected.
-    """
-    interfaces_by_key: dict[str, dict[str, Any]] = {}
-    elements_by_target: dict[tuple[str, str], dict[str, Any]] = {}
-    source_by_target: dict[tuple[str, str], tuple[Path, int]] = {}
-
-    for schema_path in schema_files:
-        try:
-            text = schema_path.read_text(encoding="utf-8-sig")
-        except UnicodeDecodeError:
-            text = schema_path.read_text(encoding="cp1252")
-
-        for line_no, raw_line in enumerate(text.splitlines(), start=1):
-            line = _strip_schema_inline_comment(raw_line)
-            if not line:
-                continue
-
-            m = _SCHEMA_RE.match(line)
-            if not m:
-                raise RuntimeError(
-                    f"Invalid schema line in {schema_path}:{line_no}\n"
-                    f"  {raw_line}\n"
-                    "Expected: Interface.Element : datatype"
-                )
-
-            interface_name, element_name, dtype = m.groups()
-            dtype = dtype.strip()
-            if not dtype:
-                raise RuntimeError(f"Empty datatype in {schema_path}:{line_no}: {raw_line}")
-
-            if not is_valid_matlab_identifier(interface_name):
-                raise RuntimeError(
-                    f"Invalid MATLAB interface identifier in {schema_path}:{line_no}: "
-                    f"{interface_name}"
-                )
-            if not is_valid_matlab_identifier(element_name):
-                raise RuntimeError(
-                    f"Invalid MATLAB element identifier in {schema_path}:{line_no}: {element_name}"
-                )
-
-            ik = norm(interface_name)
-            ek = norm(element_name)
-            target = (ik, ek)
-
-            if target in elements_by_target:
-                old = elements_by_target[target]
-                if normalize_dtype(old["dataType"]) != normalize_dtype(dtype):
-                    old_path, old_line = source_by_target[target]
-                    raise RuntimeError(
-                        "Conflicting datatype for the same schema target:\n"
-                        f"  {interface_name}.{element_name}\n"
-                        f"  {old_path}:{old_line} -> {old['dataType']}\n"
-                        f"  {schema_path}:{line_no} -> {dtype}"
-                    )
-                continue
-
-            if ik not in interfaces_by_key:
-                interfaces_by_key[ik] = {
-                    "name": interface_name,
-                    "elements": [],
-                }
-
-            elem = {
-                "name": element_name,
-                "dataType": dtype,
-            }
-            interfaces_by_key[ik]["elements"].append(elem)
-            elements_by_target[target] = elem
-            source_by_target[target] = (schema_path, line_no)
-
-    interfaces = list(interfaces_by_key.values())
-    if not interfaces:
-        raise RuntimeError("No valid Interface.Element entries were found in TXT schema.")
-
-    return interfaces
-
-
 # -----------------------------------------------------------------------------
 # DBC loading
 # -----------------------------------------------------------------------------
@@ -706,19 +449,21 @@ class DbcCandidate:
         )
 
 
-def load_dbc_folder(
-    folder: Path,
+def load_dbc_sources(
+    sources: list[Path],
 ) -> tuple[dict[str, list[DbcCandidate]], set[str]]:
-    """Load one DBC file or all DBC files recursively from a folder."""
-    dbc_paths = (
-        [folder]
-        if folder.is_file()
-        else sorted(
-            path for path in folder.rglob("*") if path.is_file() and path.suffix.lower() == ".dbc"
+    """Load DBC files: each source is one file or a folder searched recursively."""
+    dbc_paths: list[Path] = []
+    for source in sources:
+        if source.is_file():
+            dbc_paths.append(source)
+            continue
+        dbc_paths.extend(
+            sorted(path for path in source.rglob("*") if path.is_file() and path.suffix.lower() == ".dbc")
         )
-    )
+    dbc_paths = list(dict.fromkeys(dbc_paths))
     if not dbc_paths:
-        raise RuntimeError(f"No .dbc file found under:\n{folder}")
+        raise RuntimeError("No .dbc file found in:\n" + "\n".join(str(source) for source in sources))
 
     dbs: list[tuple[Path, Any]] = []
     signal_candidates: dict[str, list[DbcCandidate]] = defaultdict(list)
@@ -776,67 +521,6 @@ def value_match_score(
         if n and n in known_norms:
             hits += 1
     return hits
-
-
-def resolve_excel_sheet_name(excel_file: Any, requested_sheet: str) -> str:
-    by_norm = {str(s).strip().lower(): str(s) for s in excel_file.sheet_names}
-    key = requested_sheet.strip().lower()
-    if key not in by_norm:
-        available = ", ".join(excel_file.sheet_names)
-        raise RuntimeError(
-            f"Sheet '{requested_sheet}' was not found in Excel.\nAvailable sheets: {available}"
-        )
-    return by_norm[key]
-
-
-def interfaces_from_names(
-    all_interfaces: list[dict[str, Any]],
-    interface_names: Iterable[str],
-) -> list[dict[str, Any]]:
-    by_norm = {norm(str(i.get("name", ""))): i for i in all_interfaces if i.get("name")}
-    matched: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for name in interface_names:
-        key = norm(name)
-        if key and key in by_norm and key not in seen:
-            matched.append(by_norm[key])
-            seen.add(key)
-    return matched
-
-
-def select_input_interfaces(
-    all_interfaces: list[dict[str, Any]],
-    excel_matched_interfaces: list[dict[str, Any]],
-    config_mappings: list[InputCanMapping],
-    input_forces: list[InputForce],
-) -> list[dict[str, Any]]:
-    by_norm = {norm(str(i.get("name", ""))): i for i in all_interfaces if i.get("name")}
-
-    selected: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    # Include interfaces represented by the selected input sheets, in workbook order.
-    for intf in excel_matched_interfaces:
-        k = norm(intf.get("name", ""))
-        if k and k not in seen:
-            selected.append(intf)
-            seen.add(k)
-
-    # Include interfaces referenced only by YAML CAN overrides.
-    for m in config_mappings:
-        k = norm(m.interface)
-        if k in by_norm and k not in seen:
-            selected.append(by_norm[k])
-            seen.add(k)
-
-    # Include interfaces referenced only by YAML constant forces.
-    for force in input_forces:
-        k = norm(force.interface)
-        if k in by_norm and k not in seen:
-            selected.append(by_norm[k])
-            seen.add(k)
-
-    return selected
 
 
 def apply_input_mapping_config(
@@ -1000,13 +684,23 @@ def decode_blf(
     blf_path: Path,
     requests: dict[str, list[DbcCandidate]],
 ) -> tuple[dict[str, dict[str, Any]], float]:
+    """Read one BLF and decode the requested signals from it."""
     from can_toolbox.canlog.blf import read_blf
-    from can_toolbox.canlog.decode import MessageCodec, rows_by_message
 
     table, info = read_blf(blf_path)
     warn_skipped_objects(info)
+    return decode_table(table, requests)
+
+
+def decode_table(
+    table: Any,
+    requests: dict[str, list[DbcCandidate]],
+) -> tuple[dict[str, dict[str, Any]], float]:
+    """Decode the requested signals from frames already in memory."""
+    from can_toolbox.canlog.decode import MessageCodec, rows_by_message
+
     if not len(table):
-        raise RuntimeError("BLF does not contain a CAN frame with a valid timestamp.")
+        raise RuntimeError("The log does not contain a CAN frame with a valid timestamp.")
     timestamps = table.timestamps()
     first_ts = float(timestamps.min())
     duration = max(MIN_FALLBACK_DURATION_S, float(timestamps.max()) - first_ts)
@@ -1077,7 +771,7 @@ def decode_blf(
             )
 
     log(
-        f"  BLF: {len(table):,} frame(s), {hit_rows:,} matched decode(s), "
+        f"  Frames: {len(table):,} frame(s), {hit_rows:,} matched decode(s), "
         f"duration={duration:.3f}s, requested={len(requests)} signal(s)"
     )
     return selected, duration
@@ -1365,56 +1059,33 @@ def _convert(paths: SelectedPaths) -> int:
 
     load_runtime_dependencies()
     paths.output_folder.mkdir(parents=True, exist_ok=True)
-    config = load_mapping_config(paths.mapping_config)
-    input_mapping_config, input_forces = parse_input_mapping_config(config)
-    excel_skip_keywords = parse_excel_skip_keywords(config)
 
     log("\n[CONFIG]")
-    log(f"  BLF    : {len(paths.blf_files)} file(s)")
-    log(f"  Excel  : {paths.excel}")
-    log(f"  DBC    : {paths.dbc_folder}")
-    log(f"  Schema : {len(paths.schema_files)} file(s)")
-    if paths.input_schema or paths.output_schema:
-        log(f"  IN TXT : {paths.input_schema or '(none)'}")
-        log(f"  OUT TXT: {paths.output_schema or '(none)'}")
-    log(f"  YAML   : {paths.mapping_config if paths.mapping_config else '(none)'}")
+    log(f"  Logs   : {len(paths.blf_files)} file(s)")
+    log(f"  Excel  : {paths.excel or '(none)'}")
+    log(f"  DBC    : {', '.join(str(source) for source in paths.dbc_sources) or '(none)'}")
+    log(f"  Config : {paths.config.source or '(none)'}")
     log(f"  Output : {paths.output_folder}")
 
-    from .mapping import resolve_setup
+    from .mapping import resolve_definitions
 
     started = start_step(1, 5, "Load optional DBC definitions")
     signal_candidates, dbc_signal_names = (
-        load_dbc_folder(paths.dbc_folder) if paths.dbc_folder else ({}, set())
+        load_dbc_sources(paths.dbc_sources) if paths.dbc_sources else ({}, set())
     )
     finish_step(started, f"{len(dbc_signal_names)} unique CAN signal(s)")
-    started = start_step(2, 5, "Resolve optional Excel/TXT/YAML mappings")
-    setup = resolve_setup(
-        paths,
-        signal_candidates,
-        dbc_signal_names,
-        input_mapping_config,
-        input_forces,
-        excel_skip_keywords,
-    )
-    all_interfaces = setup.interfaces
-    input_interfaces = select_input_interfaces(
-        setup.input_interfaces if setup.input_interfaces is not None else all_interfaces,
-        setup.input_interfaces
-        if setup.input_interfaces is not None
-        else interfaces_from_names(all_interfaces, setup.input_names),
-        input_mapping_config,
-        input_forces,
-    )
-    output_interfaces = (
-        setup.output_interfaces
-        if setup.output_interfaces is not None
-        else interfaces_from_names(all_interfaces, setup.output_names)
-    )
+    started = start_step(2, 5, "Resolve the mapping config and Excel template")
+    setup = resolve_definitions(paths.config, paths.excel, signal_candidates)
+    input_mapping_config = list(setup.mappings)
+    input_forces = list(setup.forces)
+    input_interfaces = setup.input_interfaces or []
+    output_interfaces = setup.output_interfaces or []
     in_elem_map, in_specific_map = setup.input_elements, setup.input_specific
     out_elem_map, out_specific_map = setup.output_elements, setup.output_specific
     if not input_interfaces and not output_interfaces and paths.output_format == "dataset":
         raise RuntimeError(
-            "Dataset export needs signal definitions: supply DBC, Excel, TXT or YAML. Use the MAT output format for raw CAN frames."
+            "Dataset export needs signal definitions: supply a DBC, an Excel template or a mapping config. "
+            "Export MAT frames for raw CAN frames."
         )
 
     apply_input_mapping_config(
@@ -1431,7 +1102,7 @@ def _convert(paths: SelectedPaths) -> int:
     finish_step(
         started,
         f"IN={len(input_interfaces)} interface(s), OUT={len(output_interfaces)} interface(s), "
-        f"YAML overrides={len(input_mapping_config)}, forces={len(input_forces)}",
+        f"CAN sources={len(input_mapping_config)}, constants={len(input_forces)}",
     )
 
     input_forces_by_target = {force.target_key: force.value for force in input_forces}
@@ -1454,7 +1125,7 @@ def _convert(paths: SelectedPaths) -> int:
     )
     requested_signals.update(collect_can_signals(output_interfaces, out_elem_map, out_specific_map))
 
-    started = start_step(3, 5, "Decode all BLF files and prepare scenarios")
+    started = start_step(3, 5, "Decode the logs and prepare scenarios")
     decode_requests = build_decode_requests(requested_signals, signal_candidates)
     used_names: set[str] = set()
     packaged_files: list[tuple[Path | None, Path | None]] = []
@@ -1463,22 +1134,29 @@ def _convert(paths: SelectedPaths) -> int:
         workdir = Path(td)
         jobs: list[tuple[Path, Path | None, Path | None]] = []
         for index, blf_path in enumerate(paths.blf_files, start=1):
-            log(f"\n  [BLF {index}/{len(paths.blf_files)}] {blf_path.name}")
-            # Distinct subfolders can contain BLFs with identical stems.
-            stem = blf_path.stem
+            log(f"\n  [LOG {index}/{len(paths.blf_files)}] {blf_path.name}")
+            # Distinct subfolders can contain logs with identical stems.
+            stem = paths.base_name or blf_path.stem
             if stem.lower() in used_names:
                 suffix = 2
                 while f"{stem}_{suffix}".lower() in used_names:
                     suffix += 1
                 stem = f"{stem}_{suffix}"
             used_names.add(stem.lower())
-            if paths.dbc_folder:
-                decoded, duration = decode_blf(blf_path, decode_requests)
+            table = paths.tables.get(blf_path)
+            if paths.dbc_sources:
+                decoded, duration = (
+                    decode_table(table, decode_requests) if table is not None
+                    else decode_blf(blf_path, decode_requests)
+                )
             else:
-                from .frames import export_frames
+                from .frames import export_frames, export_frames_table
 
                 frame_mat = paths.output_folder / f"{stem}.mat"
-                duration = export_frames(blf_path, frame_mat)
+                duration = (
+                    export_frames_table(table, frame_mat) if table is not None
+                    else export_frames(blf_path, frame_mat)
+                )
                 frame_files.append(frame_mat)
                 decoded = {}
 
@@ -1492,7 +1170,7 @@ def _convert(paths: SelectedPaths) -> int:
                 formulas_by_target=input_formulas,
                 status_mappings_by_target=input_status_mappings,
                 forces_by_target=input_forces_by_target,
-                prepend_zero=bool(paths.excel or paths.schema_files),
+                prepend_zero=bool(paths.excel or paths.config.has_interfaces),
             )
             output_scenario, output_stats = build_mat_scenario(
                 side_name="output",
@@ -1502,8 +1180,8 @@ def _convert(paths: SelectedPaths) -> int:
                 decoded=decoded,
                 duration=duration,
             )
-            inferred_only = paths.dbc_folder and not any(
-                (paths.excel, paths.schema_files, input_mapping_config, input_forces)
+            inferred_only = bool(paths.dbc_sources) and not (
+                paths.excel or paths.config.has_interfaces or input_mapping_config or input_forces
             )
             input_suffix = "signals" if inferred_only else "input"
             input_mat = (
@@ -1534,7 +1212,7 @@ def _convert(paths: SelectedPaths) -> int:
             packaged_files.append((input_mat, output_mat))
             print_side_summary("Input", input_stats)
             print_side_summary("Output", output_stats)
-        finish_step(started, f"Prepared {len(paths.blf_files)} BLF file(s)")
+        finish_step(started, f"Prepared {len(paths.blf_files)} log file(s)")
 
         if jobs:
             started = start_step(5, 5, "Package Dataset MAT files (one MATLAB launch)")
@@ -1549,7 +1227,7 @@ def _convert(paths: SelectedPaths) -> int:
             finish_step(started, f"{len(jobs)} scenario batch(es) packaged")
 
     log("\n[SUMMARY]")
-    log(f"  BLF files : {len(paths.blf_files)}")
+    log(f"  Log files : {len(paths.blf_files)}")
     log(f"  MAT files : {sum(bool(p) for pair in packaged_files for p in pair) + len(frame_files)}")
     log(f"  Output    : {paths.output_folder}")
     log(f"  Total     : {time.perf_counter() - total_started:.2f}s")

@@ -14,7 +14,7 @@ import can  # noqa: E402
 from PySide6.QtCore import QSettings, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from can_toolbox.ui.main_window import BLF_TOOL, COMPARE_TOOL, MainWindow  # noqa: E402
+from can_toolbox.ui.main_window import COMPARE_TOOL, MainWindow  # noqa: E402
 
 pytestmark = pytest.mark.gui
 
@@ -222,46 +222,136 @@ def test_graph_plots_signals_and_syncs_cursor_with_trace(window, log_files):
     assert not window.graph.series and window.graph.placeholder.isVisibleTo(window.graph)
 
 
-def test_export_dialog_validates_and_cut_runs_in_background(window, log_files, tmp_path):
+def _dialog(window, tmp_path, **extra):
+    from can_toolbox.ui.logview.export_dialog import ExportDialog
+
+    options = dict(
+        settings=window._settings, duration=0.4, cursors=(0.3, 0.1), filtered_count=40,
+        total_count=81, folder=str(tmp_path), base_name="cut", dbc_paths=(),
+    )
+    options.update(extra)
+    return ExportDialog(window, window._binder, **options)
+
+
+def test_export_dialog_validates_the_range_formats_and_name(window, log_files, tmp_path):
+    _load(window, log_files[0])
+    dialog = _dialog(window, tmp_path)
+    try:
+        assert dialog.between.isChecked() and dialog.filtered_input.isChecked()
+        assert dialog.selected_formats() == ("blf",)
+        job = dialog.build()
+        assert (job.request.start_s, job.request.end_s, job.request.filtered) == (0.1, 0.3, True)
+        assert job.target("blf") == tmp_path / "cut.blf"
+
+        dialog.custom.setChecked(True)
+        dialog.start_input.setText("0.2")
+        dialog.end_input.setText("0.1")
+        with pytest.raises(ValueError, match="before its start"):
+            dialog.build()
+        dialog.end_input.setText("0.25")
+        dialog.name_input.setText("  ")
+        with pytest.raises(ValueError, match="name for the exported files"):
+            dialog.build()
+        dialog.name_input.setText("cut")
+        dialog.format_inputs["blf"].setChecked(False)
+        with pytest.raises(ValueError, match="at least one output format"):
+            dialog.build()
+        dialog.format_inputs["signals"].setChecked(True)
+        with pytest.raises(ValueError, match="need a DBC"):
+            dialog.build()
+        dialog.config_input.setText(str(tmp_path / "missing.yaml"))
+        with pytest.raises(ValueError, match="does not exist"):
+            dialog.build()
+    finally:
+        dialog.deleteLater()
+
+
+def test_export_dialog_warns_until_definitions_are_given(window, log_files, tmp_path):
+    _load(window, log_files[0])
+    dialog = _dialog(window, tmp_path)
+    try:
+        assert dialog.export_button.isEnabled() and not dialog.error_label.text()
+        dialog.format_inputs["dataset"].setChecked(True)
+        assert "need a DBC" in dialog.error_label.text()
+        dialog.config_input.setText(str(tmp_path / "mapping.yaml"))
+        assert not dialog.error_label.text()
+        assert dialog.upgrade_button.isEnabled()
+        for box in dialog.format_inputs.values():
+            box.setChecked(False)
+        assert not dialog.export_button.isEnabled()
+    finally:
+        dialog.deleteLater()
+
+
+def test_export_writes_every_selected_format_from_one_cut(window, log_files, tmp_path):
     from can_toolbox.canlog import open_log
-    from can_toolbox.ui.logview.dialogs import ExportDialog
 
     _load(window, log_files[0])
     window.filters.filter_input.setText("engine")
     window.filters.filter_input.returnPressed.emit()
-    dialog = ExportDialog(window, window._binder, duration=0.4, cursors=(0.3, 0.1), filtered_count=40,
-                          total_count=81, default_path=str(tmp_path / "cut.blf"))
-    assert dialog.between.isChecked() and dialog.filtered_input.isChecked()
-    request, path = dialog.build()
-    assert (request.start_s, request.end_s, request.filtered) == (0.1, 0.3, True)
-
+    dialog = _dialog(window, tmp_path, dbc_paths=(log_files[1],))
     dialog.custom.setChecked(True)
     dialog.start_input.setText("0.2")
-    dialog.end_input.setText("0.1")
-    with pytest.raises(ValueError, match="before its start"):
-        dialog.build()
     dialog.end_input.setText("0.25")
     dialog.channel_map_input.setText("1=5")
     dialog.time_input.setCurrentIndex(1)
-    dialog.path_input.setText(str(tmp_path / "cut.txt"))
-    with pytest.raises(ValueError, match="ending in"):
-        dialog.build()
-    dialog.path_input.setText(str(tmp_path / "cut.asc"))
-    request, path = dialog.build()
+    for key in ("blf", "csv", "signals"):
+        dialog.format_inputs[key].setChecked(True)
+    job = dialog.build()
     dialog.deleteLater()
 
-    window.start_export(request, path)
+    window.start_export(job)
     wait_until(lambda: "Exported" in window.status_label.text())
     assert window.last_export.frames == 6  # Engine frames at 0.20 ... 0.25 s
-    frames = open_log(path).frames
+    frames = open_log(tmp_path / "cut.blf").frames
     assert set(frames.channel.tolist()) == {5}
     assert frames.arbitration_id.tolist() == [0x100] * 6
     assert frames.seconds()[0] == pytest.approx(0.0, abs=1e-6)
+    assert (tmp_path / "cut.csv").is_file()
+    signals = tmp_path / "cut_signals.mat"
+    assert signals.is_file()
+    from scipy.io import loadmat
 
-    window.start_export(request, tmp_path / "cancel.blf")
+    scenario = loadmat(signals, simplify_cells=True)["Scenario"]
+    assert scenario["Engine"]["Rpm"]["Data"].tolist() == [2000] * 6
+
+
+def test_export_can_be_cancelled(window, log_files, tmp_path):
+    _load(window, log_files[0])
+    dialog = _dialog(window, tmp_path, base_name="cancel")
+    job = dialog.build()
+    dialog.deleteLater()
+    window.start_export(job)
     window._cancel_load()
     wait_until(lambda: not window.is_busy())
     assert not list(tmp_path.glob("cancel*.tmp"))
+
+
+def test_excel_template_and_upgraded_config_are_written(window, log_files, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    from can_toolbox.blf_mat.config import load_config
+
+    _load(window, log_files[0])
+    dialog = _dialog(window, tmp_path)
+    try:
+        template = tmp_path / "mapping_template.xlsx"
+        monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: (str(template), ""))
+        dialog.template_button.click()
+        assert template.is_file() and dialog.excel_input.text() == str(template)
+
+        legacy = tmp_path / "legacy.yaml"
+        legacy.write_text(
+            "input_forces:\n- {interface: Inputs, element: Enable, value: 1}\n", encoding="utf-8"
+        )
+        dialog.config_input.setText(str(legacy))
+        upgraded = tmp_path / "legacy_v2.yaml"
+        monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: (str(upgraded), ""))
+        dialog.upgrade_button.click()
+        assert load_config(upgraded).version == 2
+        assert dialog.config_input.text() == str(upgraded)
+    finally:
+        dialog.deleteLater()
 
 
 def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legacy, log_files, tmp_path):
@@ -388,12 +478,39 @@ def test_tools_open_in_their_own_windows_and_are_reused(window, app):
     assert compare.isVisible() and compare.widget is window.compare_tab
     assert compare.windowTitle() == "DBC Compare"
     assert window.open_tool(COMPARE_TOOL) is compare
-    blf = window.open_tool(BLF_TOOL)
-    assert blf.widget is window.blf_tab and blf is not compare
-    assert set(window.open_tools()) == {compare.widget, blf.widget}
+    assert set(window.open_tools()) == {compare.widget}
     compare.close()
-    blf.close()
     app.processEvents()
+
+
+def test_dbc_compare_tool_settings_are_migrated_once(app, tmp_path):
+    from PySide6.QtCore import QSettings
+
+    from can_toolbox.ui.main_window import migrate_legacy_settings
+
+    legacy = QSettings(str(tmp_path / "legacy.ini"), QSettings.Format.IniFormat)
+    for key, value in (("gui_language", "vi"), ("report_language", "en"), ("input_mode", "files"),
+                       ("last_old_folder", r"C:\old"), ("last_new_folder", r"C:\new"),
+                       ("last_report_path", r"C:\r.xlsx"), ("report_path_is_explicit", True)):
+        legacy.setValue(key, value)
+    settings = QSettings(str(tmp_path / "new.ini"), QSettings.Format.IniFormat)
+    viewer = MainWindow(settings, legacy=legacy)
+    try:
+        assert viewer.gui_language == "vi" and viewer._report_language == "en"
+        tab = viewer.compare_tab
+        assert tab._files_mode()
+        assert (tab.old_input.text(), tab.new_input.text()) == (r"C:\old", r"C:\new")
+        assert tab.output_input.text() == r"C:\r.xlsx"
+    finally:
+        viewer.close()
+        viewer.deleteLater()
+        app.processEvents()
+    assert legacy.value("gui_language") == "vi"  # 0.8.0 keeps its own settings
+
+    # Later changes are never overwritten by the legacy store.
+    settings.setValue("gui_language", "en")
+    migrate_legacy_settings(settings, legacy)
+    assert settings.value("gui_language") == "en"
 
 
 def test_window_layout_is_remembered(app, settings, legacy):

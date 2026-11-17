@@ -23,6 +23,13 @@ from can_toolbox.canlog.table import (
 from can_toolbox.canlog.view import LogView, format_data, format_id, frame_type
 
 FORMATS = ("blf", "asc", "mf4", "csv", "mat")
+# What one export run can write. "mat" holds raw frames; the signal formats need
+# definitions (a DBC, an Excel template or a mapping config).
+FRAME_FORMATS = ("blf", "asc", "mf4", "csv", "mat")
+SIGNAL_FORMATS = ("signals", "dataset")
+JOB_FORMATS = FRAME_FORMATS + SIGNAL_FORMATS
+EXTENSIONS = {"blf": ".blf", "asc": ".asc", "mf4": ".mf4", "csv": ".csv", "mat": ".mat",
+              "signals": ".mat", "dataset": ".mat"}
 _FLAG_FIELDS = (
     ("Extended", FLAG_EXTENDED),
     ("FD", FLAG_FD),
@@ -52,6 +59,40 @@ class ExportRequest:
 class ExportResult:
     path: Path
     frames: int
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ExportJob:
+    """One Export run: what to cut, which formats to write and where."""
+
+    request: ExportRequest
+    formats: tuple[str, ...]
+    folder: Path
+    base_name: str
+    dbc_paths: tuple[Path, ...] = ()
+    excel: Path | None = None
+    config_path: Path | None = None
+    matlab: str = ""
+
+    def target(self, fmt: str) -> Path:
+        return self.folder / f"{self.base_name}{EXTENSIONS[fmt]}"
+
+    @property
+    def signal_formats(self) -> tuple[str, ...]:
+        return tuple(fmt for fmt in self.formats if fmt in SIGNAL_FORMATS)
+
+    @property
+    def frame_formats(self) -> tuple[str, ...]:
+        return tuple(fmt for fmt in self.formats if fmt in FRAME_FORMATS)
+
+
+@dataclass(frozen=True)
+class JobResult:
+    """What one export run produced."""
+
+    frames: int
+    files: tuple[Path, ...]
     warnings: tuple[str, ...]
 
 
@@ -114,14 +155,29 @@ def export_log(
     progress: ProgressCallback | None = None,
     cancel: CancelCallback | None = None,
 ) -> ExportResult:
+    """Cut ``view`` and write it as one file."""
+    path = Path(path)
+    fmt = (fmt or path.suffix.lstrip(".")).lower()
+    table = cut_table(view, request)
+    warnings = [f"Not exported: {warning}" for warning in view.log.warnings if warning.startswith("Skipped")]
+    return export_table(table, path, fmt, progress=progress, cancel=cancel, warnings=tuple(warnings))
+
+
+def export_table(
+    table: FrameTable,
+    path: Path,
+    fmt: str | None = None,
+    progress: ProgressCallback | None = None,
+    cancel: CancelCallback | None = None,
+    warnings: tuple[str, ...] = (),
+) -> ExportResult:
+    """Write frames already cut; the file type comes from ``fmt`` or the suffix."""
     path = Path(path)
     fmt = (fmt or path.suffix.lstrip(".")).lower()
     if fmt not in FORMATS:
         raise ValueError(f"Unsupported export format {fmt!r}; expected one of {', '.join(FORMATS)}")
-    table = cut_table(view, request)
     if not len(table):
         raise ValueError("No frames in the selected range and filter")
-    warnings = [f"Not exported: {warning}" for warning in view.log.warnings if warning.startswith("Skipped")]
     path.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "blf":
         from can_toolbox.canlog.blf_writer import write_blf
@@ -136,6 +192,71 @@ def export_log(
 
         savemat(path, {"Frames": frame_fields(table)}, do_compression=True, long_field_names=True, oned_as="column")
     return ExportResult(path, len(table), tuple(warnings))
+
+
+def run_export(
+    view: LogView,
+    job: ExportJob,
+    progress: ProgressCallback | None = None,
+    cancel: CancelCallback | None = None,
+    log_callback=None,
+) -> JobResult:
+    """Cut once, then write every selected format from the same frames.
+
+    Frame formats are written here; MAT signals and Simulink Dataset go through
+    the converter, which decodes the cut table instead of reading the log again.
+    """
+    unknown = [fmt for fmt in job.formats if fmt not in JOB_FORMATS]
+    if unknown:
+        raise ValueError(f"Unsupported export format(s): {', '.join(unknown)}")
+    if not job.formats:
+        raise ValueError("Choose at least one output format")
+    if not job.base_name.strip():
+        raise ValueError("Choose a name for the exported files")
+    table = cut_table(view, job.request)
+    if not len(table):
+        raise ValueError("No frames in the selected range and filter")
+    warnings = [f"Not exported: {warning}" for warning in view.log.warnings if warning.startswith("Skipped")]
+    written: list[Path] = []
+    steps = len(job.formats)
+    for index, fmt in enumerate(job.frame_formats):
+        if cancel is not None and cancel():
+            raise ReadCancelled()
+        result = export_table(table, job.target(fmt), fmt, cancel=cancel)
+        written.append(result.path)
+        if progress is not None:
+            progress(index + 1, steps)
+    if job.signal_formats:
+        written.extend(_export_signals(table, job, log_callback))
+        if progress is not None:
+            progress(steps, steps)
+    return JobResult(len(table), tuple(written), tuple(warnings))
+
+
+def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Path]:
+    """Decode the cut through the BLF → MAT engine, once per signal format."""
+    from can_toolbox.blf_mat.config import load_config
+    from can_toolbox.blf_mat.converter import SelectedPaths, convert
+    from can_toolbox.blf_mat.options import find_matlab_executable
+
+    config = load_config(job.config_path)
+    source = job.folder / f"{job.base_name}.blf"  # a name for the logs, never read
+    written: list[Path] = []
+    for fmt in job.signal_formats:
+        paths = SelectedPaths(
+            blf_files=[source],
+            output_folder=job.folder,
+            dbc_sources=list(job.dbc_paths),
+            excel=job.excel,
+            config=config,
+            matlab_exe=find_matlab_executable(job.matlab or None) if fmt == "dataset" else None,
+            output_format="mat" if fmt == "signals" else "dataset",
+            tables={source: table},
+            base_name=job.base_name,
+        )
+        convert(paths, log_callback=log_callback)
+        written.extend(sorted(job.folder.glob(f"{job.base_name}*.mat")))
+    return list(dict.fromkeys(written))
 
 
 def frame_fields(table: FrameTable) -> dict[str, np.ndarray]:

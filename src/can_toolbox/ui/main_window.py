@@ -46,7 +46,6 @@ _LEGACY_KEYS = {
 _MIGRATED_KEY = "migrated_from_dbc_compare_tool"
 
 COMPARE_TOOL = "compare"
-BLF_TOOL = "blf"
 
 
 def _legacy_settings() -> QSettings:
@@ -102,9 +101,6 @@ class MainWindow(LogViewerWindow):
         self.compare_action = self.tools_menu.addAction("")
         self._binder.bind(self.compare_action.setText, "DBC Compare…")
         self.compare_action.triggered.connect(partial(self.open_tool, COMPARE_TOOL))
-        self.blf_action = self.tools_menu.addAction("")
-        self._binder.bind(self.blf_action.setText, "BLF → MAT…")
-        self.blf_action.triggered.connect(partial(self.open_tool, BLF_TOOL))
 
         self.settings_menu = self.menuBar().addMenu("")
         self._binder.bind(self.settings_menu.setTitle, "Settings")
@@ -138,14 +134,12 @@ class MainWindow(LogViewerWindow):
     # -- tool windows --------------------------------------------------------------
 
     def _create_tool(self, key: str) -> QWidget:
-        if key == COMPARE_TOOL:
-            from can_toolbox.ui.compare_tab import CompareTab
+        if key != COMPARE_TOOL:
+            raise KeyError(f"Unknown tool: {key}")
+        from can_toolbox.ui.compare_tab import CompareTab
 
-            return CompareTab(self._settings, gui_language=self.gui_language,
-                              report_language=self._report_language)
-        from can_toolbox.ui.blf_tab import BlfTab
-
-        return BlfTab(self._settings, gui_language=self.gui_language, report_language=self._report_language)
+        return CompareTab(self._settings, gui_language=self.gui_language,
+                          report_language=self._report_language)
 
     def tool_window(self, key: str) -> ToolWindow:
         """The window for ``key``, created (hidden) on first use."""
@@ -167,10 +161,6 @@ class MainWindow(LogViewerWindow):
     @property
     def compare_tab(self):
         return self.tool_window(COMPARE_TOOL).widget
-
-    @property
-    def blf_tab(self):
-        return self.tool_window(BLF_TOOL).widget
 
     def open_tools(self) -> tuple[QWidget, ...]:
         return tuple(window.widget for window in self._tool_windows.values())

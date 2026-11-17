@@ -15,6 +15,13 @@ def export_frames(blf: Path, target: Path) -> float:
     core.warn_skipped_objects(info)
     if not len(table):
         raise RuntimeError(f"BLF contains no CAN frames: {blf}")
+    return export_frames_table(table, target)
+
+
+def export_frames_table(table, target: Path) -> float:
+    """Write frames already in memory, for example the cut the Log Viewer exports."""
+    if not len(table):
+        raise RuntimeError("No CAN frames to export.")
     fields = frame_fields(table)
     core.savemat(target, {"Frames": fields}, do_compression=True, long_field_names=True, oned_as="column")
     core.log(f"  Frames: {len(table)} CAN/CAN-FD frames -> {target}")

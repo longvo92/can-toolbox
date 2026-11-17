@@ -74,16 +74,21 @@ def stage_convert(workdir: Path) -> None:
     excel = root / "interfaces.xlsx"
     book = Workbook()
     book.remove(book.active)
-    for sheet, interface, signal in (("SWC_INF", "Inputs", "SpeedCAN"), ("SWC_OUTF", "Outputs", "RequestCAN")):
+    for sheet, interface, signal in (("Inputs", "Inputs", "SpeedCAN"), ("Outputs", "Outputs", "RequestCAN")):
         rows = book.create_sheet(sheet)
-        rows.append(["Interface", "Data Element", "CAN Signal"])
-        rows.append([interface, signal.removesuffix("CAN"), signal])
+        rows.append(["Interface", "Data Element", "CAN Signal", "Datatype", "Formula",
+                     "Status Mapping", "Enabled"])
+        rows.append([interface, signal.removesuffix("CAN"), signal, "single", "", "", "TRUE"])
     book.save(excel)
+    config = root / "mapping.txt"
+    config.write_text("[input]\nInputs.Enable: boolean\n    value = true\n", encoding="utf-8")
 
     cases = (
         ("frames", {}, {"capture.mat": "Frames"}),
         ("dbc", {"dbc": str(dbc)}, {"capture_signals.mat": "Scenario"}),
         ("excel", {"dbc": str(dbc), "excel": str(excel)},
+         {"capture_input.mat": "Scenario", "capture_output.mat": "Scenario"}),
+        ("config", {"dbc": str(dbc), "excel": str(excel), "config": str(config)},
          {"capture_input.mat": "Scenario", "capture_output.mat": "Scenario"}),
     )
     for name, fields, expected in cases:
@@ -139,7 +144,7 @@ def stage_gui(_workdir: Path) -> None:
     from PySide6.QtWidgets import QApplication
 
     from can_toolbox.ui.app import configure_appearance
-    from can_toolbox.ui.main_window import BLF_TOOL, COMPARE_TOOL, MainWindow
+    from can_toolbox.ui.main_window import COMPARE_TOOL, MainWindow
 
     app = QApplication.instance() or QApplication([])
     configure_appearance(app)
@@ -156,7 +161,7 @@ def stage_gui(_workdir: Path) -> None:
         window.show()
         app.processEvents()
         tools = []
-        for key in (COMPARE_TOOL, BLF_TOOL):
+        for key in (COMPARE_TOOL,):
             tool = window.open_tool(key)
             tools.append(tool.windowTitle())
             tool.close()
