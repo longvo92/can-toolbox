@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Generic, Iterable, TypeVar
 
-from can_toolbox.dbc_compare.core.ecu import receivers_match, transmitters_match
-from can_toolbox.dbc_compare.core.models import Message, Signal, jaccard
-from can_toolbox.dbc_compare.core.pairing import _maximum_assignment
-from can_toolbox.dbc_compare.core.reasons import MatchReason
+from .ecu import receivers_match, transmitters_match
+from .models import Message, Signal, jaccard
+from .pairing import _maximum_assignment
+from .reasons import MatchReason
 
 T = TypeVar("T")
 

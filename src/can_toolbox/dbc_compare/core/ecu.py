@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
-from can_toolbox.dbc_compare.core.models import DbcDatabase, Diagnostic
-from can_toolbox.dbc_compare.core.parser import UNDEFINED_NODE, DbcParseError, parse_dbc
+from .discovery import collect_dbc_files
+from .models import DbcDatabase, Diagnostic
+from .parser import UNDEFINED_NODE, DbcParseError, parse_dbc
 
 
 def database_ecu_nodes(database: DbcDatabase) -> set[str]:

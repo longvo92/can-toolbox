@@ -28,14 +28,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from can_toolbox.dbc_compare.core.discovery import collect_dbc_files
-from can_toolbox.dbc_compare.core.ecu import scan_ecu_inputs, validate_ecu_map
-from can_toolbox.dbc_compare.core.models import ComparisonResult, Diagnostic
-from can_toolbox.dbc_compare.pipeline import compare_inputs
-from can_toolbox.dbc_compare.report.excel import default_report_path, write_excel_report
-from can_toolbox.i18n import translate
-from can_toolbox.ui.ecu_focus import EcuFocusDialog
-from can_toolbox.ui.widgets import (
+from ..dbc_compare.core.discovery import collect_dbc_files
+from ..dbc_compare.core.ecu import scan_ecu_inputs, validate_ecu_map
+from ..dbc_compare.core.models import ComparisonResult, Diagnostic
+from ..dbc_compare.i18n import translate
+from ..dbc_compare.pipeline import compare_inputs
+from ..dbc_compare.report.excel import default_report_path, write_excel_report
+from .ecu_focus import EcuFocusDialog
+from .widgets import (
     DropLineEdit,
     NoWheelComboBox,
     TextBinder,

@@ -8,6 +8,12 @@ under `## [Unreleased]` as they are merged; cutting a release moves them under a
 heading with its date. See [Build and Release](docs/architecture.md#build-and-release)
 for the procedure.
 
+## [Unreleased]
+
+### Changed
+
+- The Excel report is titled **DBC Comparison Report**; the comparison is also published as its own app, [dbc-compare-tool](https://github.com/longvo92/dbc-compare-tool), and the report no longer names the toolbox it ran from.
+
 ## [2.0.0] - 2026-11-17
 
 ### Added

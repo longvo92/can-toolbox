@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import PurePosixPath
 
-from can_toolbox.dbc_compare.core.ecu import transmitters_match
-from can_toolbox.dbc_compare.core.models import DbcDatabase, Message, jaccard
-from can_toolbox.dbc_compare.core.reasons import MatchReason
+from .ecu import transmitters_match
+from .models import DbcDatabase, Message, jaccard
+from .reasons import MatchReason
 
 FILE_RENAME_THRESHOLD = 0.55
 _GENERIC_WORDS = frozenset({
