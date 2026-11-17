@@ -145,12 +145,14 @@ def stage_gui(_workdir: Path) -> None:
     configure_appearance(app)
     window = MainWindow()
     try:
-        docks = [window.trace_dock, window.browser_dock, window.details_dock]
+        docks = [window.trace_dock, window.browser_dock, *window.panel_docks]
         titles = [dock.windowTitle() for dock in docks]
         if not all(titles):
             raise AssertionError(f"log viewer dock without a title: {titles}")
         if window.centralWidget() is not window.graph:
             raise AssertionError("Graphics is not the central widget")
+        if any(action.icon().isNull() for action in window.graph_actions):
+            raise AssertionError("a toolbar action lost its icon")
         window.show()
         app.processEvents()
         tools = []

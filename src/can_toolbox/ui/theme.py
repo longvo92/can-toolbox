@@ -9,7 +9,7 @@ from pathlib import Path
 from string import Template
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import QApplication
 
 from can_toolbox.app_paths import resource_path
@@ -435,6 +435,13 @@ def tinted_asset(name: str, color: str) -> Path | None:
         return None
     _ASSETS[key] = target
     return target
+
+
+def icon(name: str, theme: Theme | None = None) -> QIcon:
+    """A toolbar icon from ``resources/icons``, stroked in the theme's text colour."""
+    chosen = theme or current_theme()
+    path = tinted_asset(f"icons/{name}.svg", chosen.text)
+    return QIcon(str(path)) if path is not None else QIcon()
 
 
 def _indicator_rules(theme: Theme) -> str:

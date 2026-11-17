@@ -151,7 +151,7 @@ def test_filters_modes_find_and_time_display(window, log_files):
 
 def test_statistics_and_log_info(window, log_files):
     _load(window, log_files[0])
-    window.details.setCurrentWidget(window.statistics)
+    window.open_panel(window.statistics_dock)
     wait_until(lambda: window.statistics.rowCount() == 2)
     names = {window.statistics.item(r, 2).text(): r for r in range(2)}
     row = names["Engine"]
@@ -202,7 +202,8 @@ def test_graph_plots_signals_and_syncs_cursor_with_trace(window, log_files):
     assert window.trace.currentIndex().row() == 5
     assert window.graph.readout.item(1, 1).text() == "Park (0)"
 
-    window.graph.measure_input.setChecked(True)
+    window.cursor2_action.setChecked(True)
+    assert window.graph.measuring
     window.graph._cursors[1][0].setValue(0.1)
     assert "Δt = 0.074900 s" in window.graph.delta_label.text()
     assert window.graph.readout.item(0, 3).text() == "0"
@@ -286,7 +287,8 @@ def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legac
         assert other.filters.direction_input.currentData() == "rx"
         assert other.filters.time_mode() == "absolute"
         assert [series.ref.signal for series in other.graph.series] == ["Gear"]
-        assert other.graph.cursor_time == [0.05, 0.2] and other.graph.measure_input.isChecked()
+        assert other.graph.cursor_time == [0.05, 0.2] and other.graph.measuring
+        assert other.cursor2_action.isChecked()
 
         missing = tmp_path / "missing.cantoolbox.json"
         missing.write_text(saved.read_text(encoding="utf-8").replace("drive.blf", "gone.blf"), encoding="utf-8")
@@ -299,23 +301,86 @@ def test_workspace_restores_log_dbcs_trace_settings_and_plots(app, window, legac
         app.processEvents()
 
 
-def test_docks_are_toggled_from_the_view_menu(window):
-    docks = {
-        "Trace": window.trace_dock, "Signal Browser": window.browser_dock,
-        "Details": window.details_dock,
-    }
+def test_default_screen_is_toolbar_graphics_and_trace(window):
+    """Everything else starts hidden and comes back from the View menu."""
     window.show()
     assert window.centralWidget() is window.graph  # Graphics is the work surface
-    app_actions = {action.text(): action for action in window.view_menu.actions() if action.text()}
-    assert set(docks) <= set(app_actions)
-    for title, dock in docks.items():
-        assert not dock.isHidden(), f"{title} should be visible by default"
-        app_actions[title].trigger()
-        assert dock.isHidden()
-        app_actions[title].trigger()
+    assert not window.trace_dock.isHidden() and not window.toolbar.isHidden()
+    assert window.filter_toolbar.isHidden()
+    hidden = {
+        "Signal Browser": window.browser_dock, "Signal Values": window.values_dock,
+        "Statistics": window.statistics_dock, "Log Info": window.info_dock,
+    }
+    menu = {action.text(): action for action in window.view_menu.actions() if action.text()}
+    assert {"Trace", *hidden} <= set(menu)
+    for title, dock in hidden.items():
+        assert dock.isHidden(), f"{title} should start hidden"
+        menu[title].trigger()
         assert not dock.isHidden()
-    assert not window.toolbar.isHidden() and not window.filter_toolbar.isHidden()
+        menu[title].trigger()
+        assert dock.isHidden()
+    menu["Filter bar"].trigger()
+    assert not window.filter_toolbar.isHidden()
     window.hide()
+
+
+def test_panels_open_as_their_own_window_from_the_trace(window, log_files):
+    _load(window, log_files[0])
+    window.show()
+    panel = window.open_panel(window.statistics_dock)
+    assert panel is window.statistics_dock
+    assert not panel.isHidden() and panel.isFloating()
+    window.statistics_dock.setFloating(False)
+    window.open_panel(window.statistics_dock)  # a docked panel the user kept stays docked
+    assert not window.statistics_dock.isFloating()
+
+    window.signal_search_action.trigger()
+    assert not window.browser_dock.isHidden() and window.browser_dock.isFloating()
+    window.hide()
+
+
+def test_fit_x_covers_the_log_and_fit_y_follows_the_visible_window(window, log_files):
+    from can_toolbox.canlog.refs import SignalRef
+
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    window.show()
+    duration = window.duration()
+    assert duration == pytest.approx(1.0, abs=0.01)
+
+    window.fit_x_action.trigger()
+    low, high = window.graph.x_range()
+    assert low <= 0.0 and high >= duration
+
+    # Rpm is 2000 for the whole log, so Y fits around a constant line.
+    window.fit_y_action.trigger()
+    bottom, top = window.graph._plots[0].viewRange()[1]
+    assert bottom < 2000 < top and (top - bottom) < 1000
+
+    window.zoom_in_action.trigger()
+    zoomed_low, zoomed_high = window.graph.x_range()
+    assert (zoomed_high - zoomed_low) < (high - low)
+    window.zoom_out_action.trigger()
+    assert (window.graph.x_range()[1] - window.graph.x_range()[0]) == pytest.approx(high - low, rel=0.01)
+
+    window.cursor1_action.setChecked(False)
+    assert not window.graph._cursors[0][0].isVisible()
+    window.cursor1_action.setChecked(True)
+    assert window.graph._cursors[0][0].isVisible()
+    window.hide()
+
+
+def test_toolbar_icons_follow_the_theme(window, app):
+    from can_toolbox.ui import theme as app_theme
+
+    assert not window.open_action.icon().isNull()
+    light = window.fit_action.icon().pixmap(20, 20).toImage()
+    try:
+        app_theme.configure_appearance(app, "dark")
+        dark = window.fit_action.icon().pixmap(20, 20).toImage()
+        assert dark != light
+    finally:
+        app_theme.configure_appearance(app, "light")
 
 
 def test_tools_open_in_their_own_windows_and_are_reused(window, app):
