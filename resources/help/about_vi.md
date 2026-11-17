@@ -11,9 +11,10 @@ CAN Toolbox gom hai công việc CAN thường ngày vào một cửa sổ: ki�
 - **So sánh file hoặc folder DBC.** Xem message và signal được thêm, xóa, sửa hoặc đổi tên, cùng giá trị OLD và NEW của CAN ID, vị trí bit, hệ số scale và route Tx/Rx của ECU.
 - **Tập trung vào ECU cần kiểm tra.** Giới hạn report theo các node đã chọn và ghép cặp các node ECU đã đổi tên.
 - **Chia sẻ report Excel.** Tổng số thay đổi, chi tiết message và signal, cùng cảnh báo khi so sánh folder bỏ qua file không đọc được.
-- **Chuyển đổi log BLF.** Xuất CAN frame thô, decode signal bằng DBC, map sang interface của model từ Excel, TXT hoặc YAML, và ghi file MAT hoặc Simulink Signal Editor Dataset.
+- **Đọc và vẽ log.** Mở log BLF, ASC, MF4 dạng trace được decode bằng DBC, vẽ signal với hai cursor đo và lưu lại thiết lập thành workspace.
+- **Export một lần ra nhiều định dạng.** Cắt theo thời gian, theo cursor hoặc theo bộ lọc trace rồi ghi BLF, ASC, MF4, CSV, MAT frames, MAT signals hoặc Simulink Dataset từ cùng một lát cắt.
 
-Giao diện và report Excel có thể chọn English hoặc Tiếng Việt riêng.
+Giao diện và report Excel có thể chọn English hoặc Tiếng Việt riêng, với chủ đề sáng hoặc tối.
 
 ## Tải bản phát hành và góp ý
 

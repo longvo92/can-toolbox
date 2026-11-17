@@ -1,10 +1,10 @@
 # CAN Toolbox
 
-GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log viewer (BLF/ASC/MF4 trace, signal graphics and log cutting; no simulation), DBC file/baseline comparison into an Excel change report, and BLF to MATLAB MAT/Simulink Dataset conversion.
+GUI-only Windows desktop app shipped as one PyInstaller exe. The window is a CANoe-style log viewer (BLF/ASC/MF4 trace, signal graphics, no simulation) with one Export for every output format (BLF/ASC/MF4/CSV, MAT frames, MAT signals, Simulink Dataset); DBC file/baseline comparison into an Excel change report opens from the Tools menu.
 
 ## Layout
-- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (converter, Excel/TXT/YAML mapping, `options.py` validation), `ui/` (shell `main_window.py`, `compare_tab.py`, `blf_tab.py`, `logview_tab.py`, `graphics.py`, `widgets.py`, `style.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
-- `scripts/` (`build.py`, `release_check.py`, `smoke.py`, `evaluate_pairing.py`), `examples/` (DBC baselines, `blf/` mapping samples), `resources/help/`, `tests/`; Windows launcher `run_gui.bat`.
+- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode, `export.py` jobs), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (`config.py` schema v2, `excel_template.py`, converter, `mapping.py`, `options.py` validation), `ui/` (`logview/` window, panels, trace, tasks, dialogs and `export_dialog.py`; `main_window.py` shell, `tool_windows.py`, `compare_tab.py`, `graphics.py`, `settings_dialog.py`, `theme.py`, `widgets.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
+- `scripts/` (`build.py`, `release_check.py`, `smoke.py`, `evaluate_pairing.py`), `examples/` (DBC baselines, `blf/` mapping samples), `resources/help/`, `resources/icons/` (toolbar SVGs tinted per theme), `tests/`; Windows launcher `run_gui.bat`.
 
 ## Runtime
 - Python >=3.11; PySide6, pyqtgraph, asammdf, cantools, openpyxl, numba, numpy, scipy, python-can and PyYAML as declared in `pyproject.toml`. MATLAB only for Dataset export.
@@ -20,8 +20,11 @@ GUI-only Windows desktop app shipped as one PyInstaller exe: a CANoe-style log v
 - The app is GUI-only: no CLI entry point. `canlog/`, `dbc_compare/` and `blf_mat/` import no GUI framework (`tests/test_engine_is_qt_free.py`).
 - Opening the window imports no engine stack (numba, cantools/python-can, asammdf, scipy); engines import them on first use (`tests/test_startup_imports.py`).
 - `canlog` stays equivalent to python-can (frames) and cantools (signals); BLF objects it cannot represent are counted and reported, never dropped silently.
-- Tabs drive the engines through `dbc_compare/pipeline.py` and `blf_mat/options.py`; no comparison or conversion logic lives in `ui/`.
-- GUI options, report formats, MAT layouts and the YAML schema stay compatible unless a documented migration says otherwise.
+- The window drives the engines through `dbc_compare/pipeline.py`, `canlog/export.py` and `blf_mat/options.py`; no comparison, cut or conversion logic lives in `ui/`.
+- One export engine: `run_export` cuts once and hands the same `FrameTable` to every format, signal formats included; nothing re-reads the log.
+- A DBC assigned to one channel decodes only that channel, in the viewer and in signal export.
+- Colours live only in `ui/theme.py`; `tests/test_theme.py` fails on a hex colour elsewhere under `ui/` and on contrast below WCAG AA.
+- GUI options, report formats, MAT layouts and the mapping schema stay compatible unless a documented migration says otherwise (`docs/migration-2.0.md`). The schema is one document in YAML, JSON or TXT; 0.x files still load.
 - Engine log text stays English; GUI chrome and the Excel report are localized (EN/VI).
 - Dataset export is verified only with a mocked MATLAB in tests; a licensed MATLAB run is separate evidence.
 
