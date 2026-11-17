@@ -193,3 +193,28 @@ def test_extrema_hold_the_sample_before_the_window():
     assert series.extrema(0.0, 3.0) == (5.0, 20.0)
     empty = _series(RPM, [], [])
     assert empty.extrema(0.0, 1.0) is None
+
+
+def test_plot_mode_restored_from_a_workspace_keeps_saved_visibility(panel, signals):
+    """Nothing is selected yet, so the saved visibility must survive."""
+    first = signals.add(RPM)
+    second = signals.add(GEAR)
+    signals.set_visible(second, False)
+    panel.set_plot_mode(True, apply=False)
+    assert panel.plot_mode
+    assert [entry.ref for entry in signals.visible_entries()] == [RPM]
+    panel.view.setCurrentIndex(panel.model.index_of(second))
+    assert [entry.ref for entry in signals.visible_entries()] == [GEAR]
+    del first
+
+
+def test_dropping_at_a_top_level_row_lands_in_the_root_list(panel, signals):
+    """Top-level rows count the groups; the root list does not."""
+    signals.new_group("Powertrain")
+    signals.add(RPM)
+    signals.add(GEAR)
+    data = refs_to_mime([GEAR])
+    from PySide6.QtCore import QModelIndex as _QModelIndex
+
+    assert panel.model.dropMimeData(data, Qt.DropAction.MoveAction, 1, 0, _QModelIndex())
+    assert [entry.ref for entry in signals.root] == [GEAR, RPM]

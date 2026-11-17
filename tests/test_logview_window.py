@@ -844,3 +844,41 @@ def test_workspace_version_3_restores_every_log(window, log_files, tmp_path, leg
         other.close()
         other.deleteLater()
         app.processEvents()
+
+
+def test_find_continues_from_the_frame_of_a_selected_signal_row(window, log_files):
+    """A signal row answers for its frame, so Find does not jump somewhere else."""
+    _load(window, log_files[0])
+    frame = window.model.index(2, 0)
+    window.trace.setCurrentIndex(window.model.index(0, 0, frame))
+    window.filters.find_input.setText("18FF0001")
+    window._find(True)
+    assert window.trace.currentIndex().row() == 3  # the next matching frame, not row 0 again
+
+
+def test_dropped_dbcs_reach_every_open_log(window, log_files, tmp_path, app):
+    second = tmp_path / "second.blf"
+    second.write_bytes(log_files[0].read_bytes())
+    _load(window, log_files[0])
+    window.open_log(str(second))
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 2)
+
+    window.dbc_assignments = []
+    window.apply_databases()
+    assert all(not entry.view.database for entry in window.logs)
+    window.dbc_assignments = [(str(log_files[1]), 0)]
+    window.apply_databases()
+    assert all(entry.view.database for entry in window.logs)
+
+
+def test_a_batch_dropped_while_loading_keeps_its_order(window, log_files, tmp_path):
+    names = []
+    for index in range(2):
+        path = tmp_path / f"queued{index}.blf"
+        path.write_bytes(log_files[0].read_bytes())
+        names.append(str(path))
+    window.open_log(str(log_files[0]))  # busy from here
+    window.open_logs(names)
+    assert window._queue == names
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 3)
+    assert [entry.name for entry in window.logs] == ["drive.blf", "queued0.blf", "queued1.blf"]

@@ -608,6 +608,10 @@ class LogViewerWindow(QMainWindow):
         queued = [str(Path(path)) for path in paths if path]
         if not queued:
             return
+        if self.is_busy():
+            # A load is running: the whole batch keeps its order behind it.
+            self._queue.extend(queued)
+            return
         self._queue.extend(queued[1:])
         self.open_log(queued[0])
 
@@ -720,16 +724,21 @@ class LogViewerWindow(QMainWindow):
             dialog.deleteLater()
         self._save_assignments()
         self._update_file_label()
-        if len(self.logs):
-            from can_toolbox.canlog.database import LogDatabase
+        self.apply_databases()
 
-            # One database for every open log; a DBC scoped to a channel still
-            # decodes only that channel.
-            self.logs.set_database(LogDatabase.load(self._assignments()))
-            self._stats_dirty = True
-            self._apply_filter()
-            self._show_info()
-            self._reset_signals()
+    def apply_databases(self) -> None:
+        """Give every open log the current DBC set and redraw what is on screen."""
+        if not len(self.logs):
+            return
+        from can_toolbox.canlog.database import LogDatabase
+
+        # One database for every open log; a DBC scoped to a channel still
+        # decodes only that channel.
+        self.logs.set_database(LogDatabase.load(self._assignments()))
+        self._stats_dirty = True
+        self._apply_filter()
+        self._show_info()
+        self._reset_signals()
 
     # -- export --------------------------------------------------------------------
 
@@ -910,7 +919,7 @@ class LogViewerWindow(QMainWindow):
                 restore(plotted, group)
         for plotted in workspace.signals:
             restore(plotted, None)
-        self.signal_panel.set_plot_mode(workspace.plot_mode)
+        self.signal_panel.set_plot_mode(workspace.plot_mode, apply=False)
         self._refresh_graph()
         self.graph.restore_cursors(*workspace.cursors, workspace.measure)
         if missing:
@@ -943,7 +952,8 @@ class LogViewerWindow(QMainWindow):
         if self.view is None or self.filters.mode() == "fixed":
             return
         query = FrameQuery.parse(self.filters.find_input.text())
-        current = self.trace.currentIndex().row() if self.trace.currentIndex().isValid() else -1
+        selected = self.trace.currentIndex()
+        current = _frame_index(selected).row() if selected.isValid() else -1
         position = self.view.find(query, current, forward)
         if position < 0:
             self._set_status("No frame matches {query}.", query=self.filters.find_input.text())
@@ -1084,8 +1094,8 @@ class LogViewerWindow(QMainWindow):
             self._update_file_label()
         if logs:
             self.open_logs(logs)
-        elif dbcs and self.log_path and not self.is_busy():
-            self.reload_log(self.logs.active)
+        elif dbcs:
+            self.apply_databases()
         event.acceptProposedAction()
 
     # -- shutdown ------------------------------------------------------------------
