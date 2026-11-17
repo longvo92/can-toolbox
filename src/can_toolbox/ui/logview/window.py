@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 from can_toolbox.canlog.workspace import PlottedSignal, SignalGroup
 from can_toolbox.ui.logview.dialogs import LOG_FILTER, LOG_SUFFIXES, WORKSPACE_FILTER, DbcDialog
 from can_toolbox.ui.logview.export_dialog import ExportDialog
+from can_toolbox.ui.logview.log_set import LogSet
+from can_toolbox.ui.logview.logs_panel import LogsPanel
 from can_toolbox.ui.logview.panels import (
     STATISTICS_COLUMNS,
     FilterBar,
@@ -85,8 +87,9 @@ class LogViewerWindow(QMainWindow):
         super().__init__(parent)
         self._settings = settings
         self._binder = TextBinder(gui_language)
-        self.view = None
+        self.logs = LogSet(self)
         self.worker: Task | None = None
+        self._queue: list[str] = []
         self.stats_worker: Task | None = None
         # Superseded statistics threads stay referenced until they finish; a
         # QThread destroyed while running aborts the process.
@@ -94,8 +97,6 @@ class LogViewerWindow(QMainWindow):
         self._stats_dirty = True
         self._loaded_summary: dict[str, str] = {}
         self._cursor_driving = False
-        self.source = None
-        self._series: dict = {}
         self.last_export = None
         self._pending_workspace = None
         self._engine_log: list[str] = []
@@ -136,6 +137,7 @@ class LogViewerWindow(QMainWindow):
         self.graph.set_line_width(line_width(self._settings))
         self.signal_panel = SignalPanel(self.signals, self._binder, self._settings)
         self.signal_browser = SignalBrowser(self._binder)
+        self.logs_panel = LogsPanel(self.logs, self._binder)
         self.filters = FilterBar(self._binder)
         # Graphics is the work surface every dock arranges itself around. Without a
         # real central widget Qt hands the leftover width to the dock areas, which
@@ -220,13 +222,19 @@ class LogViewerWindow(QMainWindow):
                                          settings=self._settings, key="signals")
         self.browser_window.hide()
         self.trace_dock = self._dock("Trace", self.trace_panel, Qt.DockWidgetArea.BottomDockWidgetArea, "traceDock")
+        self.logs_dock = self._dock("Logs", self.logs_panel,
+                                    Qt.DockWidgetArea.BottomDockWidgetArea, "logsDock")
         self.statistics_dock = self._dock("Statistics", self.statistics,
                                           Qt.DockWidgetArea.BottomDockWidgetArea, "statisticsDock")
         self.info_dock = self._dock("Log Info", self.info, Qt.DockWidgetArea.BottomDockWidgetArea, "logInfoDock")
         for dock in (self.statistics_dock, self.info_dock):
             self.splitDockWidget(self.trace_dock, dock, Qt.Orientation.Horizontal)
+        # Logs shares the trace's corner as a tab, the way a second trace would.
+        self.tabifyDockWidget(self.trace_dock, self.logs_dock)
+        self.trace_dock.raise_()
         # A minimal first screen: toolbar, Graphics and Trace. Everything else is
         # one click away in View, or from the trace's own context menu.
+        # Logs is a tab beside the trace from the start; the rest open on demand.
         self.panel_docks = (self.statistics_dock, self.info_dock)
         for dock in self.panel_docks:
             dock.hide()
@@ -239,7 +247,7 @@ class LogViewerWindow(QMainWindow):
         again from :meth:`showEvent` unless a saved layout was restored.
         """
         # resizeDocks accepts docks of one area at a time.
-        self.resizeDocks([self.trace_dock, *self.panel_docks], [760, 340, 340],
+        self.resizeDocks([self.trace_dock, self.statistics_dock, self.info_dock], [760, 340, 340],
                          Qt.Orientation.Horizontal)
         self.resizeDocks([self.trace_dock], [320], Qt.Orientation.Vertical)
 
@@ -283,8 +291,8 @@ class LogViewerWindow(QMainWindow):
 
         self.view_menu = self.menuBar().addMenu("")
         self._binder.bind(self.view_menu.setTitle, "View")
-        for dock, key in ((self.trace_dock, "Trace"), (self.statistics_dock, "Statistics"),
-                          (self.info_dock, "Log Info")):
+        for dock, key in ((self.trace_dock, "Trace"), (self.logs_dock, "Logs"),
+                          (self.statistics_dock, "Statistics"), (self.info_dock, "Log Info")):
             action = dock.toggleViewAction()
             self._binder.bind(action.setText, key)
             self.view_menu.addAction(action)
@@ -302,7 +310,7 @@ class LogViewerWindow(QMainWindow):
 
     def _wire_events(self) -> None:
         self.open_action.triggered.connect(self._choose_log)
-        self.reload_action.triggered.connect(lambda: self.open_log(self.log_path))
+        self.reload_action.triggered.connect(lambda: self.reload_log(self.logs.active))
         self.dbc_action.triggered.connect(self._edit_dbcs)
         self.export_action.triggered.connect(self._export)
         self.open_workspace_action.triggered.connect(self._choose_workspace)
@@ -313,6 +321,11 @@ class LogViewerWindow(QMainWindow):
         self.filters.time_mode_changed.connect(self._apply_time_mode)
         self.filters.find_requested.connect(self._find)
         self.filters.expand_requested.connect(self.expand_trace)
+        self.logs.active_changed.connect(self._show_active_log)
+        self.logs_panel.activate_requested.connect(self.logs.set_active)
+        self.logs_panel.export_requested.connect(self.export_log)
+        self.logs_panel.reload_requested.connect(self.reload_log)
+        self.logs_panel.close_requested.connect(self.close_logs)
         self.trace.selectionModel().currentRowChanged.connect(self._trace_moved)
         self.trace.customContextMenuRequested.connect(self._show_trace_menu)
         self.statistics_dock.visibilityChanged.connect(lambda _visible: self._refresh_statistics())
@@ -340,6 +353,20 @@ class LogViewerWindow(QMainWindow):
         self.info_action.triggered.connect(lambda: self.open_panel(self.info_dock))
         self.signal_search_action.triggered.connect(self._open_signal_search)
         theme_manager.changed.connect(lambda _theme: self._update_icons())
+
+    # -- the open logs -------------------------------------------------------------
+
+    @property
+    def view(self):
+        """Frames of the active log, or ``None`` when nothing is open."""
+        entry = self.logs.active
+        return entry.view if entry is not None else None
+
+    @property
+    def source(self):
+        """Signal decoder of the active log."""
+        entry = self.logs.active
+        return entry.signal_source() if entry is not None else None
 
     # -- language ------------------------------------------------------------------
 
@@ -567,17 +594,32 @@ class LogViewerWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog
 
         start = str(Path(self.log_path).parent) if self.log_path else ""
-        path, _ = QFileDialog.getOpenFileName(self, self._tr("Open CAN log"), start, LOG_FILTER)
-        if path:
-            self.open_log(path)
+        paths, _ = QFileDialog.getOpenFileNames(self, self._tr("Open CAN log"), start, LOG_FILTER)
+        if paths:
+            self.open_logs(paths)
 
     def _assignments(self):
         from can_toolbox.canlog.database import DbcAssignment
 
         return [DbcAssignment(Path(path), channel) for path, channel in self.dbc_assignments]
 
+    def open_logs(self, paths) -> None:
+        """Open several logs: one worker at a time, in the order they were given."""
+        queued = [str(Path(path)) for path in paths if path]
+        if not queued:
+            return
+        if self.is_busy():
+            # A load is running: the whole batch keeps its order behind it.
+            self._queue.extend(queued)
+            return
+        self._queue.extend(queued[1:])
+        self.open_log(queued[0])
+
     def open_log(self, path: str) -> None:
-        if self.is_busy() or not path:
+        if not path:
+            return
+        if self.is_busy():
+            self._queue.append(str(Path(path)))
             return
         self.log_path = str(Path(path))
         self._settings.setValue(SETTINGS_PREFIX + "last_log", self.log_path)
@@ -599,19 +641,35 @@ class LogViewerWindow(QMainWindow):
         self._set_controls_enabled()
 
     def _on_loaded(self, view) -> None:
-        self.view = view
-        frames = view.frames
-        self._loaded_summary = {"count": f"{len(frames):,}", "duration": f"{self.duration():.3f}"}
+        self.logs.add(self.log_path, view)
+        self._settings.setValue(SETTINGS_PREFIX + "last_logs", json.dumps(self.logs.paths()))
+        # A reload of the log already shown changes no active entry, so bind again here.
+        self._show_active_log()
+        if self._pending_workspace is not None and not self._queue:
+            workspace, self._pending_workspace = self._pending_workspace, None
+            self._apply_workspace(workspace)
+        if view.log.warnings or view.database.errors:
+            self.open_panel(self.info_dock)
+
+    def _show_active_log(self) -> None:
+        """Bind the trace, the graph and the panels to the active log."""
+        view = self.view
+        if view is None:
+            self._loaded_summary = {}
+            self.model.set_rows(None, None)
+            self.signal_browser.populate([])
+            self._refresh_graph()
+            self._update_file_label()
+            self._set_controls_enabled()
+            return
+        self.log_path = self.logs.active.path
+        self._loaded_summary = {"count": f"{len(view.frames):,}", "duration": f"{self.duration():.3f}"}
         self._populate_channels()
         self._stats_dirty = True
         self._apply_filter()
         self._show_info()
         self._reset_signals()
-        if self._pending_workspace is not None:
-            workspace, self._pending_workspace = self._pending_workspace, None
-            self._apply_workspace(workspace)
-        if view.log.warnings or view.database.errors:
-            self.open_panel(self.info_dock)
+        self._update_file_label()
 
     def _on_failed(self, message: str) -> None:
         self._pending_workspace = None
@@ -622,8 +680,11 @@ class LogViewerWindow(QMainWindow):
         self.cancel_button.hide()
         self.busy_changed.emit(False)
         self._set_controls_enabled()
+        if self._queue:
+            self.open_log(self._queue.pop(0))
 
     def _cancel_load(self) -> None:
+        self._queue.clear()
         if self.worker and self.worker.isRunning():
             self.worker.cancelled.set()
             self._set_status("Cancelled.")
@@ -663,26 +724,41 @@ class LogViewerWindow(QMainWindow):
             dialog.deleteLater()
         self._save_assignments()
         self._update_file_label()
-        if self.view is not None:
-            from can_toolbox.canlog.database import LogDatabase
+        self.apply_databases()
 
-            self.view.set_database(LogDatabase.load(self._assignments()))
-            self._stats_dirty = True
-            self._apply_filter()
-            self._show_info()
-            self._reset_signals()
+    def apply_databases(self) -> None:
+        """Give every open log the current DBC set and redraw what is on screen."""
+        if not len(self.logs):
+            return
+        from can_toolbox.canlog.database import LogDatabase
+
+        # One database for every open log; a DBC scoped to a channel still
+        # decodes only that channel.
+        self.logs.set_database(LogDatabase.load(self._assignments()))
+        self._stats_dirty = True
+        self._apply_filter()
+        self._show_info()
+        self._reset_signals()
 
     # -- export --------------------------------------------------------------------
 
     def _export(self) -> None:
-        if self.view is None or self.is_busy():
+        self.export_log(self.logs.active)
+
+    def export_log(self, entry) -> None:
+        """Export one open log; the cursors apply only to the log on screen."""
+        if entry is None or self.is_busy():
             return
-        view = self.view
-        log_path = Path(self.log_path)
+        view = entry.view
+        log_path = Path(entry.path)
+        active = entry is self.logs.active
         folder = self._settings.value(SETTINGS_PREFIX + "export_folder", "", type=str)
+        duration = entry.duration
+        cursors = tuple(self.graph.cursor_time) if active and self.graph.measuring and self.graph.series \
+            else None
         dialog = ExportDialog(
-            self, self._binder, settings=self._settings, duration=self.duration(),
-            cursors=tuple(self.graph.cursor_time) if self.graph.measuring and self.graph.series else None,
+            self, self._binder, settings=self._settings, duration=duration,
+            cursors=cursors,
             filtered_count=len(view.rows), total_count=len(view.order),
             folder=folder or str(log_path.parent), base_name=f"{log_path.stem}_cut",
             dbc_paths=tuple((Path(path), int(channel)) for path, channel in self.dbc_assignments),
@@ -693,13 +769,13 @@ class LogViewerWindow(QMainWindow):
             job = dialog.job
         finally:
             dialog.deleteLater()
-        self.start_export(job)
+        self.start_export(job, view)
 
-    def start_export(self, job) -> None:
+    def start_export(self, job, view=None) -> None:
         """Run one export job off the GUI thread; the engine log goes to Log Info."""
         from can_toolbox.canlog.export import run_export
 
-        view = self.view
+        view = self.view if view is None else view
         self.worker = Task(lambda task: run_export(
             view, job, progress=task.report, cancel=task.cancelled.is_set,
             log_callback=self._engine_log.append,
@@ -725,13 +801,31 @@ class LogViewerWindow(QMainWindow):
         if lines:
             self.info.appendPlainText("\n".join(str(line) for line in lines))
 
+    # -- open logs -----------------------------------------------------------------
+
+    def reload_log(self, entry) -> None:
+        """Read one log from disk again; the others keep what they hold."""
+        if entry is None or self.is_busy():
+            return
+        self.open_log(entry.path)
+
+    def close_logs(self, entries) -> None:
+        """Close logs; the newest of the rest becomes active, or nothing is shown."""
+        self.logs.close(list(entries))
+        self._settings.setValue(SETTINGS_PREFIX + "last_logs", json.dumps(self.logs.paths()))
+        if self.logs.active is None:
+            self._show_active_log()
+
     # -- workspace -----------------------------------------------------------------
 
     def current_workspace(self):
         from can_toolbox.canlog.workspace import Workspace
 
+        active = self.logs.active
         return Workspace(
             log=self.log_path,
+            logs=tuple(self.logs.paths()),
+            active=self.logs.index_of(active) if active is not None else 0,
             dbcs=tuple(self.dbc_assignments),
             filter=self.filters.filter_input.text(),
             channel=int(self.filters.channel_input.currentData() or 0),
@@ -801,10 +895,13 @@ class LogViewerWindow(QMainWindow):
             self._set_status("The workspace log was not found: {path}", path=workspace.log)
             return
         self._pending_workspace = workspace
-        self.open_log(workspace.log)
+        self.logs.clear()
+        self.open_logs(workspace.logs or (workspace.log,))
 
     def _apply_workspace(self, workspace) -> None:
-        """Restore trace settings, the signal list and the cursors once the log is loaded."""
+        """Restore trace settings, the signal list and the cursors once the logs are loaded."""
+        if workspace.logs and workspace.active < len(self.logs):
+            self.logs.set_active(self.logs.entries[workspace.active])
         self.filters.restore_filters(workspace.filter, workspace.channel, workspace.direction, workspace.errors)
         self._apply_filter()
         self.signals.clear()
@@ -822,7 +919,7 @@ class LogViewerWindow(QMainWindow):
                 restore(plotted, group)
         for plotted in workspace.signals:
             restore(plotted, None)
-        self.signal_panel.set_plot_mode(workspace.plot_mode)
+        self.signal_panel.set_plot_mode(workspace.plot_mode, apply=False)
         self._refresh_graph()
         self.graph.restore_cursors(*workspace.cursors, workspace.measure)
         if missing:
@@ -855,7 +952,8 @@ class LogViewerWindow(QMainWindow):
         if self.view is None or self.filters.mode() == "fixed":
             return
         query = FrameQuery.parse(self.filters.find_input.text())
-        current = self.trace.currentIndex().row() if self.trace.currentIndex().isValid() else -1
+        selected = self.trace.currentIndex()
+        current = _frame_index(selected).row() if selected.isValid() else -1
         position = self.view.find(query, current, forward)
         if position < 0:
             self._set_status("No frame matches {query}.", query=self.filters.find_input.text())
@@ -881,24 +979,22 @@ class LogViewerWindow(QMainWindow):
     # -- graphics ------------------------------------------------------------------
 
     def _reset_signals(self) -> None:
-        """Rebuild the catalog for the current log and DBCs; keep the signal list as it is."""
-        from can_toolbox.canlog.signals import SignalSource
-
-        self.source = SignalSource(self.view)
-        self.signal_browser.populate(self.source.catalog())
-        self._series.clear()
+        """Rebuild the catalog for the active log and DBCs; keep the signal list as it is."""
+        source = self.source
+        self.signal_browser.populate(source.catalog() if source is not None else [])
         self._refresh_graph()
 
     def series_for(self, ref):
-        """The series for ``ref`` in the open log, or ``None``; decoded once and cached."""
-        if self.view is None or self.source is None:
+        """The series for ``ref`` in the active log, or ``None``; decoded once and cached."""
+        entry = self.logs.active
+        if entry is None:
             return None
-        if ref not in self._series:
+        if ref not in entry.series:
             try:
-                self._series[ref] = self.source.series(ref)
+                entry.series[ref] = entry.signal_source().series(ref)
             except KeyError:
-                self._series[ref] = None
-        return self._series[ref]
+                entry.series[ref] = None
+        return entry.series[ref]
 
     def _signals_changed(self) -> None:
         self._refresh_graph()
@@ -908,7 +1004,8 @@ class LogViewerWindow(QMainWindow):
         plots = []
         for entry in self.signals.visible_entries():
             series = self.series_for(entry.ref)
-            if series is not None:
+            # A signal the active log never carries has no lane of its own.
+            if series is not None and len(series.time):
                 plots.append((entry, series))
         self.graph.show_entries(plots)
         self.signal_panel.set_series_lookup(self.series_for)
@@ -996,9 +1093,9 @@ class LogViewerWindow(QMainWindow):
             self._save_assignments()
             self._update_file_label()
         if logs:
-            self.open_log(logs[0])
-        elif dbcs and self.log_path and not self.is_busy():
-            self.open_log(self.log_path)
+            self.open_logs(logs)
+        elif dbcs:
+            self.apply_databases()
         event.acceptProposedAction()
 
     # -- shutdown ------------------------------------------------------------------

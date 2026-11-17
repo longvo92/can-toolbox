@@ -150,7 +150,7 @@ def stage_gui(_workdir: Path) -> None:
     configure_appearance(app)
     window = MainWindow()
     try:
-        docks = [window.trace_dock, *window.panel_docks]
+        docks = [window.trace_dock, window.logs_dock, *window.panel_docks]
         titles = [dock.windowTitle() for dock in docks]
         if not all(titles):
             raise AssertionError(f"log viewer dock without a title: {titles}")

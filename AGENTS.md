@@ -3,7 +3,7 @@
 GUI-only Windows desktop app shipped as one PyInstaller exe. The window is a CANoe-style log viewer (BLF/ASC/MF4 trace, signal graphics, no simulation) with one Export for every output format (BLF/ASC/MF4/CSV, MAT frames, MAT signals, Simulink Dataset); DBC file/baseline comparison into an Excel change report opens from the Tools menu.
 
 ## Layout
-- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode, `export.py` jobs), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (`config.py` schema v2, `excel_template.py`, converter, `mapping.py`, `options.py` validation), `ui/` (`logview/` window, panels, trace, tasks, dialogs, `signal_set.py` + `signal_panel.py` (the graph's signal list) and `export_dialog.py`; `main_window.py` shell, `tool_windows.py`, `compare_tab.py`, `graphics.py`, `settings_dialog.py`, `theme.py`, `widgets.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
+- `src/can_toolbox/`: `canlog/` (columnar `FrameTable`, Numba BLF reader, vectorized DBC decode, `export.py` jobs), `dbc_compare/` (`core/` engine, `report/` Excel, `pipeline.py`), `blf_mat/` (`config.py` schema v2, `excel_template.py`, converter, `mapping.py`, `options.py` validation), `ui/` (`logview/` window, panels, trace, tasks, dialogs, `signal_set.py` + `signal_panel.py` (the graph's signal list), `log_set.py` + `logs_panel.py` (the open logs) and `export_dialog.py`; `main_window.py` shell, `tool_windows.py`, `compare_tab.py`, `graphics.py`, `settings_dialog.py`, `theme.py`, `widgets.py`, `app.py`), `app_paths.py`, `i18n.py`, `release_notes.py`.
 - `scripts/` (`build.py`, `release_check.py`, `smoke.py`, `evaluate_pairing.py`), `examples/` (DBC baselines, `blf/` mapping samples), `resources/help/`, `resources/icons/` (toolbar SVGs tinted per theme), `tests/`; Windows launcher `run_gui.bat`.
 
 ## Runtime
@@ -24,6 +24,7 @@ GUI-only Windows desktop app shipped as one PyInstaller exe. The window is a CAN
 - The graph draws what `ui/logview/signal_set.py` holds: groups, per-signal visibility and a colour fixed when the signal is added. The panel and the plots read that one model.
 - One export engine: `run_export` cuts once and hands the same `FrameTable` to every format, signal formats included; nothing re-reads the log.
 - A DBC assigned to one channel decodes only that channel, in the viewer and in signal export.
+- Every open log shares one `LogDatabase`; the active log is what the trace, the graph and the status bar show, and each log keeps its own `FrameTable` in memory.
 - Colours live only in `ui/theme.py`; `tests/test_theme.py` fails on a hex colour elsewhere under `ui/` and on contrast below WCAG AA.
 - GUI options, report formats, MAT layouts and the mapping schema stay compatible unless a documented migration says otherwise (`docs/migration-2.0.md`). The schema is one document in YAML, JSON or TXT; 0.x files still load.
 - Engine log text stays English; GUI chrome and the Excel report are localized (EN/VI).

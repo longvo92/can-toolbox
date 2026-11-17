@@ -12,7 +12,8 @@ from can_toolbox.canlog.refs import SignalRef
 SUFFIX = ".cantoolbox.json"
 FORMAT = "can-toolbox-workspace"
 # 2: the graph keeps groups, per-signal visibility and colours.
-VERSION = 2
+# 3: several logs can be open at once.
+VERSION = 3
 
 
 class WorkspaceError(ValueError):
@@ -38,6 +39,8 @@ class SignalGroup:
 @dataclass(frozen=True)
 class Workspace:
     log: str = ""
+    logs: tuple[str, ...] = ()
+    active: int = 0
     dbcs: tuple[tuple[str, int], ...] = ()
     filter: str = ""
     channel: int = 0
@@ -96,6 +99,8 @@ def save_workspace(path: Path, workspace: Workspace) -> Path:
         "format": FORMAT,
         "version": VERSION,
         "log": _portable(workspace.log, base),
+        "logs": [_portable(log, base) for log in (workspace.logs or ((workspace.log,) if workspace.log else ()))],
+        "active": workspace.active,
         "dbcs": [{"path": _portable(dbc, base), "channel": channel} for dbc, channel in workspace.dbcs],
         "trace": {
             "filter": workspace.filter,
@@ -138,11 +143,20 @@ def load_workspace(path: Path) -> Workspace:
     if int(data.get("version", 0)) > VERSION:
         raise WorkspaceError(f"{path.name} was saved by a newer CAN Toolbox (version {data.get('version')})")
     try:
+        # Version 1 and 2 hold a single log; version 3 holds a list.
+        logs = tuple(_resolve(str(item), base) for item in data.get("logs", []) if str(item))
+        log = _resolve(str(data.get("log", "")), base)
+        if not logs and log:
+            logs = (log,)
+        if logs and not log:
+            log = logs[0]
         trace = data.get("trace", {})
         graph = data.get("graph", {})
         cursors = [float(value) for value in graph.get("cursors", [0.0, 0.0])][:2]
         return Workspace(
-            log=_resolve(str(data.get("log", "")), base),
+            log=log,
+            logs=logs,
+            active=max(0, min(int(data.get("active", 0)), max(len(logs) - 1, 0))),
             dbcs=tuple((_resolve(str(item["path"]), base), int(item.get("channel", 0))) for item in data.get("dbcs", [])),
             filter=str(trace.get("filter", "")),
             channel=int(trace.get("channel", 0)),

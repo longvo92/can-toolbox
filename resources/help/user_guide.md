@@ -6,14 +6,16 @@ theme (follow Windows, Light or Dark), the graph line width and the MATLAB execu
 
 ## Log Viewer
 
-1. **File → Open Log…** (Ctrl+O) or drop a `.blf`, `.asc` or `.mf4` file on the window. Large logs load in the background; **Cancel** stops reading. **File → Recent Logs** reopens the last eight logs, and **Reload** (F5) reads the current one again.
-2. **File → DBC Files…** adds databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the window adds them for all channels.
-3. The trace lists every frame: time, channel, ID (extended IDs end in `x`, as in CANoe), message name, direction, type, DLC and data. Error frames are red.
-4. **Expand a frame** (the arrow, double-click or →) to read its decoded signals under it: the signal name in **Name** and its physical value, or the value-table text, in **Data**. Frames without a DBC message have nothing to expand. **Expand All** and **Collapse All** are the **+** and **−** buttons at the end of the filter bar and in the right-click menu; above 100,000 rows they ask first, because every expanded row is decoded.
-5. **View** shows what the first screen leaves out: **Signal Browser**, **Statistics** and **Log Info**. Right-click the trace to open one as its own window, to plot every signal of a message, or to move the cursor to a frame. Drag a panel back onto the window to dock it; the layout comes back next time.
-6. The **filter bar** is part of the Trace panel. It accepts IDs, ranges and name fragments, for example `100, 200-2FF, 18FF00x, Engine`; press Enter to apply. **Channel**, **Direction** and **Errors** narrow the trace further. **Find** jumps to the next or previous matching frame.
-7. **Mode → Fixed position** shows only the newest frame per channel and ID. **Time → Absolute** shows wall-clock time when the log records its start.
-8. **Statistics** lists counts and cycle times per message. **Log Info** shows the file, start time, DBCs, the engine log of the last export and anything the reader skipped, such as BLF markers or LIN objects.
+1. **File → Open Log…** (Ctrl+O) or drop `.blf`, `.asc` or `.mf4` files on the window. Several files can be chosen or dropped at once; each one is read in turn, in the background, and **Cancel** stops the queue. **File → Recent Logs** reopens the last eight logs, and **Reload** (F5) reads the active one again.
+2. Logs add up: the **Logs** tab beside the trace lists every open log with its duration, frames, channels and path, in bold for the active one. Double-click a row, or use **Set Active**, to show that log in the trace and the graph. Its menu also has **Export…**, **Reload** and **Close** (several rows at once). Every log keeps its frames in memory, so closing the ones you are done with frees it.
+3. The signal list does not change when you switch logs. A signal the active log does not carry is greyed out, with *not in this log* in its tooltip, and its lane is not drawn.
+4. **File → DBC Files…** adds databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the window adds them for all channels.
+5. The trace lists every frame: time, channel, ID (extended IDs end in `x`, as in CANoe), message name, direction, type, DLC and data. Error frames are red.
+6. **Expand a frame** (the arrow, double-click or →) to read its decoded signals under it: the signal name in **Name** and its physical value, or the value-table text, in **Data**. Frames without a DBC message have nothing to expand. **Expand All** and **Collapse All** are the **+** and **−** buttons at the end of the filter bar and in the right-click menu; above 100,000 rows they ask first, because every expanded row is decoded.
+7. **View** shows what the first screen leaves out: **Signal Browser**, **Statistics** and **Log Info**. Right-click the trace to open one as its own window, to plot every signal of a message, or to move the cursor to a frame. Drag a panel back onto the window to dock it; the layout comes back next time.
+8. The **filter bar** is part of the Trace panel. It accepts IDs, ranges and name fragments, for example `100, 200-2FF, 18FF00x, Engine`; press Enter to apply. **Channel**, **Direction** and **Errors** narrow the trace further. **Find** jumps to the next or previous matching frame.
+9. **Mode → Fixed position** shows only the newest frame per channel and ID. **Time → Absolute** shows wall-clock time when the log records its start.
+10. **Statistics** lists counts and cycle times per message. **Log Info** shows the file, start time, DBCs, the engine log of the last export and anything the reader skipped, such as BLF markers or LIN objects.
 
 ### Graphics
 

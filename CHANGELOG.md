@@ -12,6 +12,7 @@ for the procedure.
 
 ### Added
 
+- **Several logs at once.** Open Log, Recent Logs and dropping files add to the list instead of replacing it; the new **Logs** panel beside the trace lists name, duration, frames, channels and path, makes one active on a double-click, and exports, reloads or closes any of them from its menu. The trace, the graph and the status bar follow the active log, the signal list stays as it is, and a signal the active log does not carry is greyed out.
 - **Expand a trace row** to read the signals of that frame, decoded where you are looking. Expand All and Collapse All are on the filter bar and in the right-click menu, and a trace with more than 100,000 rows asks before expanding.
 - A **signal list beside the graph**: group signals, tick what is plotted, and read each one's value at both cursors with Min, Max and Delta over the measured span or the visible range. Right-click for groups, Move to Group, Delete and a Ctrl+click plot mode where the selection is what the graph shows; drag to reorder or regroup, and hide columns from the header menu.
 - The **Signal Browser** is its own window now, with Channel and Message filters beside the search box, and several signals can be added at once.
@@ -21,7 +22,7 @@ for the procedure.
 
 ### Changed
 
-- Workspaces keep the groups, the colour of each signal and what is hidden (format 2). Workspaces saved by 2.0 still open; their signals come back as one ungrouped list.
+- Workspaces keep every open log and which one was active, plus the groups, the colour of each signal and what is hidden (format 3). Workspaces saved by 2.0 still open; their one log comes back as the only log, and their signals as one ungrouped list. Workspaces saved by 2.0 still open; their signals come back as one ungrouped list.
 - The filter bar lives in the Trace panel, where it belongs; it is always there instead of being a toolbar you switch on.
 - The window lost its toolbar: opening logs, DBCs, workspaces and Export are in **File**, and everything about the graph is on the graph.
 - Plots are shorter and name their signal on the left axis, in the colour of the curve, with a rule between lanes — so more signals fit on screen.

@@ -186,10 +186,14 @@ class SignalTreeModel(QAbstractItemModel):
         owner = parent.internalPointer() if parent.isValid() else None
         group = owner if isinstance(owner, Group) else self.signals.group_of(owner) if owner else None
         known = [entry for ref in refs if (entry := self.signals.entry_for(ref))]
+        position = None if row < 0 else row
+        if position is not None and group is None:
+            # Top-level rows count the groups first; the root list does not.
+            position = max(0, position - len(self.signals.groups))
         self.beginResetModel()
         try:
             if known:
-                self.signals.move(known, group, None if row < 0 else row)
+                self.signals.move(known, group, position)
             for ref in refs:
                 if self.signals.entry_for(ref) is None:
                     self.signals.add(ref, group)
@@ -285,7 +289,8 @@ class SignalPanel(QWidget):
         missing: set[int] = set()
         for entry in self.signals.entries():
             series = self.series_for(entry.ref) if self.series_for else None
-            if series is None:
+            # No samples means the active log does not carry this signal.
+            if series is None or not len(series.time):
                 missing.add(id(entry))
                 values[id(entry)] = ("", "", "", "", "")
                 continue
@@ -339,10 +344,14 @@ class SignalPanel(QWidget):
             self.signals.show_only(entries)
         self.focus_changed.emit(entries[0].ref if entries else None)
 
-    def set_plot_mode(self, enabled: bool) -> None:
-        """CANoe's Ctrl+click behaviour: the selection is what the graph shows."""
+    def set_plot_mode(self, enabled: bool, *, apply: bool = True) -> None:
+        """CANoe's Ctrl+click behaviour: the selection is what the graph shows.
+
+        ``apply=False`` only sets the mode, for a workspace that stored it: the
+        visibility it saved stays as it is until the user selects something.
+        """
         self.plot_mode = enabled
-        if enabled:
+        if enabled and apply:
             self.signals.show_only(self.selected_entries())
 
     # -- menus ---------------------------------------------------------------------
