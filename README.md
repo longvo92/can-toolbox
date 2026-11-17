@@ -89,6 +89,12 @@ py -m venv .venv
 - [Architecture](docs/architecture.md) — components, rules, testing and builds
 - [Changelog](CHANGELOG.md)
 
+## Only comparing DBC files?
+
+The comparison here is shared with [dbc-compare-tool](https://github.com/longvo92/dbc-compare-tool),
+a smaller app that does just that job: same engine, same Excel report, no log viewer and a
+download a fraction of the size. This repository vendors its code; that one is where it lives.
+
 ## License
 
 [MIT](LICENSE) · Long Vo Thien
