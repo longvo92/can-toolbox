@@ -6,14 +6,16 @@ Sáng hoặc Tối), độ dày đường đồ thị và đường dẫn MATLAB
 
 ## Log Viewer
 
-1. Chọn **File → Mở log…** (Ctrl+O) hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào cửa sổ. Log lớn đọc ở luồng nền; **Hủy** dừng việc đọc. **File → Log gần đây** mở lại tám log gần nhất, **Nạp lại** (F5) đọc lại log hiện tại.
-2. Chọn **File → File DBC…** để thêm database và gán cho **Mọi channel** hoặc một channel CAN. DBC gán theo channel được ưu tiên; kéo thả file `.dbc` sẽ thêm cho mọi channel.
-3. Trace liệt kê từng frame: thời gian, channel, ID (ID extended kết thúc bằng `x` như CANoe), tên message, hướng, loại, DLC và dữ liệu. Error frame hiển thị màu đỏ.
-4. **Mở rộng một frame** (bấm mũi tên, nhấp đúp hoặc phím →) để xem signal đã decode ngay dưới frame đó: tên signal ở cột **Name**, giá trị vật lý hoặc text theo value table ở cột **Data**. Frame không có message trong DBC thì không mở rộng được. Nút **+** và **−** ở cuối thanh lọc, hoặc menu chuột phải, mở hết và thu hết; quá 100.000 dòng sẽ hỏi trước vì mỗi dòng mở ra đều phải decode.
-5. Menu **Hiển thị** bật lại những phần không có trong màn hình mặc định: **Danh sách signal**, **Thống kê** và **Thông tin log**. Nhấp chuột phải vào trace để mở một panel thành cửa sổ riêng, vẽ mọi signal của message, hoặc đưa cursor tới frame đang chọn. Kéo panel trở lại cửa sổ để dock; bố cục được nhớ cho lần sau.
-6. **Thanh lọc** nằm trong panel Trace. Ô lọc nhận ID, khoảng ID và một phần tên, ví dụ `100, 200-2FF, 18FF00x, Engine`; nhấn Enter để áp dụng. **Channel**, **Hướng** và **Error frame** thu hẹp thêm. **Tìm** nhảy tới frame khớp kế tiếp hoặc trước đó.
-7. **Chế độ → Vị trí cố định** chỉ hiện frame mới nhất của mỗi channel và ID. **Thời gian → Tuyệt đối** hiện giờ thực khi log có mốc bắt đầu.
-8. **Thống kê** liệt kê số lượng và chu kỳ theo message. **Thông tin log** hiện file, thời điểm bắt đầu, DBC, log của lần export gần nhất và những đối tượng reader bỏ qua, ví dụ marker BLF hoặc frame LIN.
+1. Chọn **File → Mở log…** (Ctrl+O) hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào cửa sổ. Có thể chọn hoặc kéo thả nhiều file một lần; mỗi file đọc lần lượt ở luồng nền, **Hủy** dừng cả hàng đợi. **File → Log gần đây** mở lại tám log gần nhất, **Nạp lại** (F5) đọc lại log hiện tại.
+2. Log mở thêm chứ không thay thế: tab **Danh sách log** cạnh Trace liệt kê mọi log đang mở kèm thời lượng, số frame, channel và đường dẫn; log hiện tại in đậm. Nhấp đúp một dòng hoặc chọn **Chọn làm log hiện tại** để xem log đó trong Trace và đồ thị. Menu chuột phải còn có **Export…**, **Tải lại** và **Đóng** (chọn được nhiều dòng). Mỗi log giữ toàn bộ frame trong RAM nên đóng bớt log không dùng sẽ giải phóng bộ nhớ.
+3. Danh sách signal giữ nguyên khi đổi log. Signal không có trong log hiện tại hiện màu xám, tooltip ghi *không có trong log này*, và không được vẽ.
+4. Chọn **File → File DBC…** để thêm database và gán cho **Mọi channel** hoặc một channel CAN. DBC gán theo channel được ưu tiên; kéo thả file `.dbc` sẽ thêm cho mọi channel.
+5. Trace liệt kê từng frame: thời gian, channel, ID (ID extended kết thúc bằng `x` như CANoe), tên message, hướng, loại, DLC và dữ liệu. Error frame hiển thị màu đỏ.
+6. **Mở rộng một frame** (bấm mũi tên, nhấp đúp hoặc phím →) để xem signal đã decode ngay dưới frame đó: tên signal ở cột **Name**, giá trị vật lý hoặc text theo value table ở cột **Data**. Frame không có message trong DBC thì không mở rộng được. Nút **+** và **−** ở cuối thanh lọc, hoặc menu chuột phải, mở hết và thu hết; quá 100.000 dòng sẽ hỏi trước vì mỗi dòng mở ra đều phải decode.
+7. Menu **Hiển thị** bật lại những phần không có trong màn hình mặc định: **Danh sách signal**, **Thống kê** và **Thông tin log**. Nhấp chuột phải vào trace để mở một panel thành cửa sổ riêng, vẽ mọi signal của message, hoặc đưa cursor tới frame đang chọn. Kéo panel trở lại cửa sổ để dock; bố cục được nhớ cho lần sau.
+8. **Thanh lọc** nằm trong panel Trace. Ô lọc nhận ID, khoảng ID và một phần tên, ví dụ `100, 200-2FF, 18FF00x, Engine`; nhấn Enter để áp dụng. **Channel**, **Hướng** và **Error frame** thu hẹp thêm. **Tìm** nhảy tới frame khớp kế tiếp hoặc trước đó.
+9. **Chế độ → Vị trí cố định** chỉ hiện frame mới nhất của mỗi channel và ID. **Thời gian → Tuyệt đối** hiện giờ thực khi log có mốc bắt đầu.
+10. **Thống kê** liệt kê số lượng và chu kỳ theo message. **Thông tin log** hiện file, thời điểm bắt đầu, DBC, log của lần export gần nhất và những đối tượng reader bỏ qua, ví dụ marker BLF hoặc frame LIN.
 
 ### Đồ thị
 

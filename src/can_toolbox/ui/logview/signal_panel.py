@@ -285,7 +285,8 @@ class SignalPanel(QWidget):
         missing: set[int] = set()
         for entry in self.signals.entries():
             series = self.series_for(entry.ref) if self.series_for else None
-            if series is None:
+            # No samples means the active log does not carry this signal.
+            if series is None or not len(series.time):
                 missing.add(id(entry))
                 values[id(entry)] = ("", "", "", "", "")
                 continue

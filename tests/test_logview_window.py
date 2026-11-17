@@ -734,3 +734,113 @@ def test_the_filter_bar_can_expand_and_collapse_the_trace(window, log_files):
     assert window.trace.isExpanded(window.model.index(2, 0))
     window.filters.collapse_button.click()
     assert not window.trace.isExpanded(window.model.index(2, 0))
+
+
+def test_several_logs_stay_open_and_the_active_one_drives_the_window(window, log_files, tmp_path, app):
+    """Opening a log adds it; the active one is what the trace and graph show."""
+    from can_toolbox.canlog.refs import SignalRef
+
+    second = tmp_path / "second.blf"
+    with can.BLFWriter(second) as writer:
+        for index in range(10):
+            writer.on_message_received(can.Message(
+                timestamp=1_700_000_100 + index * 0.01, arbitration_id=0x100, is_extended_id=False,
+                data=bytes([0x20, 0x4E, index % 2, 0, 0, 0, 0, 0]), channel=0,
+            ))
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    first_entry = window.logs.active
+    assert window.model.rowCount() == 81
+
+    window.open_log(str(second))
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 2)
+    assert [entry.name for entry in window.logs] == ["drive.blf", "second.blf"]
+    assert window.logs.active.name == "second.blf"
+    assert window.model.rowCount() == 10  # the trace follows the active log
+    assert window.view is window.logs.active.view
+    # The signal list is untouched; the series come from the log on screen.
+    assert [entry.ref.signal for entry in window.signals.entries()] == ["Rpm"]
+    assert window.series_for(SignalRef(1, 0x100, "Engine", "Rpm")).values[0] == 5000.0
+
+    window.logs.set_active(first_entry)
+    app.processEvents()
+    assert window.model.rowCount() == 81
+    assert window.series_for(SignalRef(1, 0x100, "Engine", "Rpm")).values[0] == 2000.0
+
+    # The Logs panel lists them, and double-clicking one makes it active.
+    panel = window.logs_panel
+    assert panel.table.rowCount() == 2
+    assert panel.table.item(1, 0).text() == "second.blf"
+    assert panel.table.item(1, 2).text() == "10"
+    panel.activate_requested.emit(window.logs.entries[1])
+    app.processEvents()
+    assert window.logs.active.name == "second.blf"
+
+    window.close_logs([window.logs.active])
+    assert [entry.name for entry in window.logs] == ["drive.blf"]
+    assert window.logs.active is first_entry and window.model.rowCount() == 81
+    window.close_logs(list(window.logs))
+    assert window.logs.active is None and window.model.rowCount() == 0
+
+
+def test_a_signal_missing_from_the_active_log_is_greyed_out(window, log_files, tmp_path, app):
+    from can_toolbox.canlog.refs import SignalRef
+
+    other = tmp_path / "other.blf"
+    with can.BLFWriter(other) as writer:
+        writer.on_message_received(can.Message(
+            timestamp=1_700_000_200, arbitration_id=0x200, is_extended_id=False, data=b"\x01\x02", channel=0,
+        ))
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    window.open_log(str(other))
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 2)
+
+    entry = window.signals.entries()[0]
+    assert not len(window.series_for(entry.ref).time)  # the log carries no such frame
+    assert not window.graph.series  # nothing to draw from this log
+    index = window.signal_panel.model.index_of(entry)
+    assert "not in this log" in window.signal_panel.model.data(index, Qt.ItemDataRole.ToolTipRole)
+
+
+def test_one_dbc_set_applies_to_every_open_log(window, log_files, tmp_path, app):
+    second = tmp_path / "second.blf"
+    second.write_bytes(log_files[0].read_bytes())
+    _load(window, log_files[0])
+    window.open_log(str(second))
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 2)
+    databases = {id(entry.view.database) for entry in window.logs}
+
+    window.dbc_assignments = []
+    window._save_assignments()
+    from can_toolbox.canlog.database import LogDatabase
+
+    window.logs.set_database(LogDatabase.load([]))
+    assert all(not entry.view.database for entry in window.logs)
+    assert len(databases) >= 1
+
+
+def test_workspace_version_3_restores_every_log(window, log_files, tmp_path, legacy, app):
+    second = tmp_path / "second.blf"
+    second.write_bytes(log_files[0].read_bytes())
+    _load(window, log_files[0])
+    window.open_log(str(second))
+    wait_until(lambda: not window.is_busy() and len(window.logs) == 2)
+    window.logs.set_active(window.logs.entries[0])
+    window.save_workspace(tmp_path / "multi.json")
+    saved = tmp_path / "multi.cantoolbox.json"
+
+    data = json.loads(saved.read_text(encoding="utf-8"))
+    assert data["version"] == 3 and len(data["logs"]) == 2 and data["active"] == 0
+
+    other = MainWindow(QSettings(str(tmp_path / "other.ini"), QSettings.Format.IniFormat), legacy=legacy)
+    try:
+        other.open_workspace(saved)
+        wait_until(lambda: not other.is_busy() and len(other.logs) == 2)
+        assert [entry.name for entry in other.logs] == ["drive.blf", "second.blf"]
+        assert other.logs.active.name == "drive.blf"
+    finally:
+        other.wait_for_workers()
+        other.close()
+        other.deleteLater()
+        app.processEvents()
