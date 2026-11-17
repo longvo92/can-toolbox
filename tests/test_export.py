@@ -217,3 +217,61 @@ def test_dataset_and_mat_signals_get_their_own_stem():
 
     assert signal_stem("drive_cut", "signals") == "drive_cut"
     assert signal_stem("drive_cut", "dataset") == "drive_cut_dataset"
+
+
+@pytest.fixture
+def scoped_log(tmp_path):
+    """One DBC assigned to CAN 1, frames on CAN 1 and CAN 2 with the same ID."""
+    dbc = tmp_path / "bus1.dbc"
+    dbc.write_text(_CHANNEL_DBC.format(scale=1), encoding="ascii")
+    path = tmp_path / "scoped.blf"
+    with can.BLFWriter(path) as writer:
+        for index, channel in enumerate((0, 1)):  # python-can channels are 0-based
+            writer.on_message_received(can.Message(
+                timestamp=100.0 + index, arbitration_id=0x100, is_extended_id=False,
+                data=[7, 0], channel=channel,
+            ))
+    return path, dbc
+
+
+def _signal_export(view, folder, dbc, channel_map=(), config=None):
+    from can_toolbox.canlog.export import ExportJob, run_export
+
+    job = ExportJob(
+        request=ExportRequest(channel_map=channel_map),
+        formats=("signals",), folder=folder, base_name="cut",
+        dbc_paths=((dbc, 1),), config_path=config,
+    )
+    return run_export(view, job, log_callback=lambda _line: None)
+
+
+def test_remapped_channels_keep_their_dbc_scope(scoped_log, tmp_path, blf_runtime):
+    """Exporting with 1=5 must still decode the frames the DBC was assigned to."""
+    from can_toolbox.canlog import open_log
+    from can_toolbox.canlog.database import DbcAssignment, LogDatabase
+
+    path, dbc = scoped_log
+    view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc, 1)]))
+    result = _signal_export(view, tmp_path / "remapped", dbc, channel_map=((1, 5),))
+    scenario = loadmat(tmp_path / "remapped" / "cut_signals.mat", simplify_cells=True)["Scenario"]
+    assert result.frames == 2
+    # Decoded from the one frame of the assigned bus, not defaulted to 0.
+    assert np.atleast_1d(scenario["Shared"]["Value"]["Data"]).tolist() == [7]
+
+
+def test_a_config_beside_the_app_applies_to_an_export(scoped_log, tmp_path, monkeypatch, blf_runtime):
+    from can_toolbox.blf_mat import options as blf_options
+    from can_toolbox.canlog import open_log
+    from can_toolbox.canlog.database import DbcAssignment, LogDatabase
+
+    path, dbc = scoped_log
+    beside = tmp_path / "app"
+    beside.mkdir()
+    (beside / "signal_mapping.yaml").write_text(
+        "input_forces:\n- {interface: Inputs, element: Enable, value: 3}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(blf_options, "application_directory", lambda: beside)
+    view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc, 1)]))
+    _signal_export(view, tmp_path / "default_config", dbc)
+    scenario = loadmat(tmp_path / "default_config" / "cut_input.mat", simplify_cells=True)["Scenario"]
+    assert np.atleast_1d(scenario["Inputs"]["Enable"]["Data"]).tolist() == [3, 3]
