@@ -35,6 +35,21 @@ class SignalSeries:
         index = int(np.searchsorted(self.time, seconds, side="right")) - 1
         return None if index < 0 or not len(self.values) else float(self.values[index])
 
+    def extrema(self, low: float, high: float) -> tuple[float, float] | None:
+        """Smallest and largest held value between ``low`` and ``high``.
+
+        Sample-and-hold means the sample before ``low`` is still on screen, so
+        it counts. ``None`` when the signal has no sample at or before ``high``.
+        """
+        if not len(self.time) or high < low:
+            return None
+        start = max(int(np.searchsorted(self.time, low, side="right")) - 1, 0)
+        stop = int(np.searchsorted(self.time, high, side="right"))
+        if stop <= start:
+            return None
+        window = self.values[start:stop]
+        return (float(np.min(window)), float(np.max(window)))
+
     def change_times(self) -> np.ndarray:
         """Times at which the held value changes, the first sample included."""
         if not len(self.time):

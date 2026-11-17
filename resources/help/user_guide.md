@@ -17,9 +17,22 @@ theme (follow Windows, Light or Dark), the graph line width and the MATLAB execu
 
 ### Graphics
 
-Open **View → Signal Browser**, type in **Search signals**, then double-click a signal,
-drag it onto the graph or select several and click **Add to Graph**. Each signal gets its
-own plot on a shared time axis and holds its value until the next frame.
+Open **View → Signal Browser** — its own window, with a search box and **Channel** and
+**Message** filters. Double-click a signal, drag a selection onto the graph, or click
+**Add to Graph**. Each signal gets its own plot on a shared time axis and holds its value
+until the next frame.
+
+The list beside the graph is what is plotted. Each row shows the signal in the colour of
+its curve, its value at **Cursor 1** and **Cursor 2**, and **Min**, **Max** and **Delta** —
+over the span between the cursors while measuring, otherwise over the time range on screen.
+Untick a row to keep a signal in the list without drawing it; the Cursor 2 and Delta columns
+appear with the second cursor, and the header's right-click menu hides the rest.
+
+Right-click the list for **Add Signals…**, **New Group**, **Rename**, **Delete**,
+**Move to Group**, **Expand/Collapse All** and **Ctrl+click plot mode**, where the selected
+rows are exactly what the graph draws. Drag rows to reorder them or to move them between
+groups, and press Delete to remove them. Sixteen lanes are drawn at a time; the list itself
+is not limited.
 
 The graph has its own toolbar:
 

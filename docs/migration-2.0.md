@@ -109,3 +109,7 @@ Stored under `HKEY_CURRENT_USER\Software\CanToolbox\CANToolbox`:
 | `blf/*` inputs of the old window | unused; Export keeps `logview/export_*` instead |
 
 Workspaces (`*.cantoolbox.json`) written by 1.0 open unchanged.
+
+Since 2.0 the graph keeps groups, per-signal visibility and a colour per signal, so the file
+format is version 2. Version 1 files still open: their signals come back as one ungrouped,
+fully visible list. A version 2 file does not open in 2.0.0.

@@ -7,19 +7,15 @@ from collections.abc import Sequence
 
 import pyqtgraph as pg
 from PySide6.QtCore import QMimeData, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QFontMetrics, QImage, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFontMetrics, QImage
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QFileDialog,
-    QHeaderView,
     QLabel,
     QMenu,
     QScrollArea,
     QSizePolicy,
-    QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
     QToolBar,
     QToolButton,
     QTreeWidget,
@@ -43,18 +39,43 @@ DEFAULT_LINE_WIDTH = 2
 pg.setConfigOptions(antialias=False)
 
 
-def ref_to_mime(ref: SignalRef) -> QMimeData:
+def _as_payload(ref: SignalRef) -> dict:
+    return {"channel": ref.channel, "key": ref.key, "message": ref.message, "signal": ref.signal}
+
+
+def _as_ref(payload: dict) -> SignalRef:
+    return SignalRef(int(payload["channel"]), int(payload["key"]), str(payload["message"]), str(payload["signal"]))
+
+
+def refs_to_mime(refs) -> QMimeData:
+    """Carry one or many signals; the payload is a list."""
     data = QMimeData()
-    payload = {"channel": ref.channel, "key": ref.key, "message": ref.message, "signal": ref.signal}
-    data.setData(SIGNAL_MIME, json.dumps(payload).encode())
+    data.setData(SIGNAL_MIME, json.dumps([_as_payload(ref) for ref in refs]).encode())
     return data
 
 
-def ref_from_mime(data: QMimeData) -> SignalRef | None:
+def refs_from_mime(data: QMimeData) -> list[SignalRef]:
+    """Read a dropped payload, list or the single object older versions sent."""
     if not data.hasFormat(SIGNAL_MIME):
-        return None
-    payload = json.loads(bytes(data.data(SIGNAL_MIME)).decode())
-    return SignalRef(int(payload["channel"]), int(payload["key"]), payload["message"], payload["signal"])
+        return []
+    try:
+        payload = json.loads(bytes(data.data(SIGNAL_MIME)).decode())
+    except ValueError:
+        return []
+    items = payload if isinstance(payload, list) else [payload]
+    try:
+        return [_as_ref(item) for item in items]
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
+def ref_to_mime(ref: SignalRef) -> QMimeData:
+    return refs_to_mime([ref])
+
+
+def ref_from_mime(data: QMimeData) -> SignalRef | None:
+    refs = refs_from_mime(data)
+    return refs[0] if refs else None
 
 
 class SignalTree(QTreeWidget):
@@ -77,16 +98,22 @@ class SignalTree(QTreeWidget):
             parent = QTreeWidgetItem([f"{entry.message}  [{format_key(entry.key)}, CAN {entry.channel}]"])
             parent.setToolTip(0, f"{entry.frames:,} frames")
             parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
+            parent.setData(0, Qt.ItemDataRole.UserRole + 1, (entry.channel, entry.message))
             for name in entry.signals:
                 child = QTreeWidgetItem([name])
                 child.setData(0, Qt.ItemDataRole.UserRole, SignalRef(entry.channel, entry.key, entry.message, name))
                 parent.addChild(child)
             self.addTopLevelItem(parent)
 
-    def apply_filter(self, text: str) -> None:
+    def apply_filter(self, text: str, *, channel=None, message=None) -> None:
+        """Show the signals matching the search text, channel and message."""
         needle = text.strip().casefold()
         for index in range(self.topLevelItemCount()):
             parent = self.topLevelItem(index)
+            owner = parent.data(0, Qt.ItemDataRole.UserRole + 1) or (None, None)
+            if (channel is not None and owner[0] != channel) or (message is not None and owner[1] != message):
+                parent.setHidden(True)
+                continue
             parent_hit = needle in parent.text(0).casefold()
             visible = 0
             for child_index in range(parent.childCount()):
@@ -95,7 +122,7 @@ class SignalTree(QTreeWidget):
                 child.setHidden(not hit)
                 visible += hit
             parent.setHidden(visible == 0)
-            parent.setExpanded(bool(needle) and visible > 0)
+            parent.setExpanded((bool(needle) or message is not None) and visible > 0)
 
     def selected_refs(self) -> list[SignalRef]:
         return [ref for item in self.selectedItems() if (ref := item.data(0, Qt.ItemDataRole.UserRole))]
@@ -103,7 +130,7 @@ class SignalTree(QTreeWidget):
     def mimeData(self, items):
         refs = [item.data(0, Qt.ItemDataRole.UserRole) for item in items]
         refs = [ref for ref in refs if ref]
-        return ref_to_mime(refs[0]) if refs else QMimeData()
+        return refs_to_mime(refs) if refs else QMimeData()
 
     def _activate(self, item, _column) -> None:
         ref = item.data(0, Qt.ItemDataRole.UserRole)
@@ -112,7 +139,7 @@ class SignalTree(QTreeWidget):
 
 
 class _DropArea(pg.GraphicsLayoutWidget):
-    dropped = Signal(object)
+    dropped = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -128,9 +155,9 @@ class _DropArea(pg.GraphicsLayoutWidget):
         self.dragEnterEvent(event)
 
     def dropEvent(self, event) -> None:
-        ref = ref_from_mime(event.mimeData())
-        if ref is not None:
-            self.dropped.emit(ref)
+        refs = refs_from_mime(event.mimeData())
+        if refs:
+            self.dropped.emit(refs)
             event.acceptProposedAction()
 
 
@@ -138,8 +165,12 @@ class GraphPanel(QWidget):
     """Stacked plots, one per signal, sharing the time axis of the trace (seconds from the first frame)."""
 
     cursor_moved = Signal(float)
-    signal_dropped = Signal(object)
+    signal_dropped = Signal(list)
     measuring_changed = Signal(bool)
+    remove_requested = Signal()
+    clear_requested = Signal()
+    range_changed = Signal(float, float)
+    cursors_changed = Signal()
 
     def __init__(self, binder: TextBinder, parent=None, *, actions: Sequence[QAction] = ()) -> None:
         super().__init__(parent)
@@ -152,6 +183,8 @@ class GraphPanel(QWidget):
         self._measuring = False
         self._visible_cursors = [True, False]
         self._line_width = DEFAULT_LINE_WIDTH
+        self.plotted: list = []  # (Entry, SignalSeries) pairs in display order
+        self._focus = None
         self._theme = app_theme.current_theme()
         app_theme.manager.changed.connect(self.apply_theme)
 
@@ -165,13 +198,6 @@ class GraphPanel(QWidget):
         binder.bind(self.placeholder.setText,
                     "Double-click or drag signals from the list to plot them.")
 
-        self.readout = QTableWidget(0, 4)
-        self.readout.verticalHeader().hide()
-        self.readout.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.readout.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        header = self.readout.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.delta_label = QLabel()
         self.delta_label.setObjectName("hintLabel")
         self.toolbar = self._build_toolbar(actions)
@@ -181,29 +207,13 @@ class GraphPanel(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.scroll.setWidget(self.canvas)
-        plots = QWidget()
-        plots_layout = QVBoxLayout(plots)
-        plots_layout.setContentsMargins(0, 0, 0, 0)
-        plots_layout.addWidget(self.placeholder)
-        plots_layout.addWidget(self.scroll, 1)
-        side = QWidget()
-        side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(0, 0, 0, 0)
-        side_layout.addWidget(self.readout, 1)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(plots)
-        splitter.addWidget(side)
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([700, 300])
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.toolbar)
-        layout.addWidget(splitter, 1)
+        layout.addWidget(self.placeholder)
+        layout.addWidget(self.scroll, 1)
 
-        QShortcut(QKeySequence.StandardKey.Delete, self.readout, activated=self.remove_selected)
         self._update_language()
         self._show_canvas()
 
@@ -287,24 +297,22 @@ class GraphPanel(QWidget):
     def refs(self) -> list[SignalRef]:
         return [series.ref for series in self.series]
 
-    def add_series(self, series) -> bool:
-        if series.ref in self.refs() or len(self.series) >= MAX_PLOTS:
-            return False
-        self.series.append(series)
+    def show_entries(self, plots) -> None:
+        """Draw ``plots``: ``(entry, series)`` pairs, already in display order.
+
+        At most :data:`MAX_PLOTS` lanes are drawn; the rest of the list stays in
+        the signal panel, waiting to be made visible.
+        """
+        self.plotted = list(plots)[:MAX_PLOTS]
+        self.series = [series for _entry, series in self.plotted]
         self._rebuild()
-        return True
 
     def remove_selected(self) -> None:
-        rows = sorted({index.row() for index in self.readout.selectedIndexes()}, reverse=True)
-        for row in rows:
-            if row < len(self.series):
-                del self.series[row]
-        if rows:
-            self._rebuild()
+        """The signal panel owns the list; it decides what 'remove' means."""
+        self.remove_requested.emit()
 
     def clear(self) -> None:
-        self.series = []
-        self._rebuild()
+        self.clear_requested.emit()
 
     @property
     def measuring(self) -> bool:
@@ -323,7 +331,7 @@ class GraphPanel(QWidget):
         for line in self._cursors[1]:
             line.setValue(self.cursor_time[1])
             line.setVisible(enabled)
-        self._update_readout()
+        self._update_delta()
         self.measuring_changed.emit(enabled)
 
     def set_cursor_visible(self, cursor: int, visible: bool) -> None:
@@ -398,7 +406,7 @@ class GraphPanel(QWidget):
             self.cursor_time[0] = seconds
             for line in self._cursors[0]:
                 line.setValue(seconds)
-            self._update_readout()
+            self._update_delta()
         finally:
             self._syncing = False
 
@@ -414,11 +422,14 @@ class GraphPanel(QWidget):
         self.measuring_changed.emit(measure)
 
     def selected_series(self):
-        """The series whose row is selected, or the only one plotted."""
-        rows = sorted({index.row() for index in self.readout.selectedIndexes()})
-        if rows and rows[0] < len(self.series):
-            return self.series[rows[0]]
+        """The series the change-jump buttons act on, set by the signal panel."""
+        if self._focus is not None:
+            return next((series for series in self.series if series.ref == self._focus), None)
         return self.series[0] if len(self.series) == 1 else None
+
+    def set_focus_ref(self, ref) -> None:
+        """The signal the panel has selected; the change-jump buttons follow it."""
+        self._focus = ref
 
     def jump_to_change(self, *, forward: bool) -> bool:
         """Move cursor 1 to the next or previous value change of the chosen signal."""
@@ -472,9 +483,7 @@ class GraphPanel(QWidget):
     # -- internals -----------------------------------------------------------------
 
     def _update_language(self) -> None:
-        tr = self._binder.tr
-        self.readout.setHorizontalHeaderLabels([tr("Signal"), tr("Cursor 1"), tr("Cursor 2"), tr("Delta")])
-        self._update_readout()
+        self._update_delta()
 
     def _show_canvas(self) -> None:
         empty = not self.series
@@ -491,8 +500,9 @@ class GraphPanel(QWidget):
         self._cursors = [[], []]
         first = None
         theme = self._theme
-        for index, series in enumerate(self.series):
-            color = theme.curves[index % len(theme.curves)]
+        for index, (entry, series) in enumerate(self.plotted):
+            # The colour belongs to the entry, so hiding a lane never recolours the rest.
+            color = theme.curves[entry.color_index % len(theme.curves)]
             plot = self.canvas.addPlot(row=index, col=0)
             plot.showGrid(x=True, y=True, alpha=theme.grid_alpha)
             plot.setMenuEnabled(False)
@@ -523,9 +533,12 @@ class GraphPanel(QWidget):
                 curve.setDownsampling(auto=True, method="peak")
             if first is None:
                 first = plot
+                plot.sigXRangeChanged.connect(
+                    lambda _item, bounds: self.range_changed.emit(float(bounds[0]), float(bounds[1]))
+                )
             else:
                 plot.setXLink(first)
-            if index < len(self.series) - 1:
+            if index < len(self.plotted) - 1:
                 plot.getAxis("bottom").setStyle(showValues=False)
             else:
                 plot.setLabel("bottom", self._binder.tr("Time (s)"))
@@ -538,7 +551,7 @@ class GraphPanel(QWidget):
                 plot.addItem(line, ignoreBounds=True)
                 self._cursors[cursor].append(line)
             self._plots.append(plot)
-        self._fill_readout()
+        self._update_delta()
         self._show_canvas()
 
     def _label_lane(self, plot, series, color: str) -> None:
@@ -568,35 +581,14 @@ class GraphPanel(QWidget):
                     other.setValue(seconds)
         finally:
             self._syncing = False
-        self._update_readout()
+        self._update_delta()
         if cursor == 0:
             self.cursor_moved.emit(seconds)
 
-    def _fill_readout(self) -> None:
-        self.readout.setRowCount(len(self.series))
-        for row, series in enumerate(self.series):
-            item = QTableWidgetItem(series.ref.label)
-            item.setForeground(QColor(self._theme.curves[row % len(self._theme.curves)]))
-            item.setToolTip(series.ref.label)
-            self.readout.setItem(row, 0, item)
-        self._update_readout()
-
-    def _update_readout(self) -> None:
-        measuring = self._measuring
+    def _update_delta(self) -> None:
+        """Both cursors moved or changed state: repaint Δt and tell the panel."""
         first, second = self.cursor_time
-        for row, series in enumerate(self.series):
-            values = [series.text_at(first), series.text_at(second) if measuring else ""]
-            delta = ""
-            if measuring:
-                a, b = series.value_at(first), series.value_at(second)
-                if a is not None and b is not None:
-                    delta = f"{b - a:.6g}"
-            for column, text in enumerate((*values, delta), start=1):
-                item = self.readout.item(row, column)
-                if item is None:
-                    item = QTableWidgetItem()
-                    self.readout.setItem(row, column, item)
-                item.setText(text)
         self.delta_label.setText(
-            self._binder.tr("Δt = {delta} s", delta=f"{second - first:.6f}") if measuring else ""
+            self._binder.tr("Δt = {delta} s", delta=f"{second - first:.6f}") if self._measuring else ""
         )
+        self.cursors_changed.emit()

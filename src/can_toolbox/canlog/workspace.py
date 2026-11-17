@@ -11,11 +11,28 @@ from can_toolbox.canlog.refs import SignalRef
 
 SUFFIX = ".cantoolbox.json"
 FORMAT = "can-toolbox-workspace"
-VERSION = 1
+# 2: the graph keeps groups, per-signal visibility and colours.
+VERSION = 2
 
 
 class WorkspaceError(ValueError):
     """The file is not a readable workspace."""
+
+
+@dataclass(frozen=True)
+class PlottedSignal:
+    """One signal in the graph list, with how it is shown."""
+
+    ref: SignalRef
+    visible: bool = True
+    color: int | None = None
+
+
+@dataclass(frozen=True)
+class SignalGroup:
+    name: str
+    signals: tuple[PlottedSignal, ...] = ()
+    expanded: bool = True
 
 
 @dataclass(frozen=True)
@@ -28,9 +45,31 @@ class Workspace:
     errors: bool = True
     mode: str = "chronological"
     time: str = "relative"
-    signals: tuple[SignalRef, ...] = ()
+    signals: tuple[PlottedSignal, ...] = ()
+    groups: tuple[SignalGroup, ...] = ()
     cursors: tuple[float, float] = (0.0, 0.0)
     measure: bool = False
+    plot_mode: bool = False
+
+
+def _signal_data(plotted: PlottedSignal) -> dict:
+    data = {
+        "channel": plotted.ref.channel,
+        "id": plotted.ref.key,
+        "message": plotted.ref.message,
+        "signal": plotted.ref.signal,
+        "visible": plotted.visible,
+    }
+    if plotted.color is not None:
+        data["color"] = plotted.color
+    return data
+
+
+def _read_signal(item: dict) -> PlottedSignal:
+    """Read one plotted signal; version 1 files have no visibility or colour."""
+    ref = SignalRef(int(item["channel"]), int(item["id"]), str(item["message"]), str(item["signal"]))
+    color = item.get("color")
+    return PlottedSignal(ref, bool(item.get("visible", True)), None if color is None else int(color))
 
 
 def _portable(path: str, base: Path) -> str:
@@ -67,12 +106,18 @@ def save_workspace(path: Path, workspace: Workspace) -> Path:
             "time": workspace.time,
         },
         "graph": {
-            "signals": [
-                {"channel": ref.channel, "id": ref.key, "message": ref.message, "signal": ref.signal}
-                for ref in workspace.signals
+            "groups": [
+                {
+                    "name": group.name,
+                    "expanded": group.expanded,
+                    "signals": [_signal_data(plotted) for plotted in group.signals],
+                }
+                for group in workspace.groups
             ],
+            "signals": [_signal_data(plotted) for plotted in workspace.signals],
             "cursors": list(workspace.cursors),
             "measure": workspace.measure,
+            "plot_mode": workspace.plot_mode,
         },
     }
     temporary = path.with_name(path.name + ".tmp")
@@ -105,12 +150,18 @@ def load_workspace(path: Path) -> Workspace:
             errors=bool(trace.get("errors", True)),
             mode=str(trace.get("mode", "chronological")),
             time=str(trace.get("time", "relative")),
-            signals=tuple(
-                SignalRef(int(item["channel"]), int(item["id"]), str(item["message"]), str(item["signal"]))
-                for item in graph.get("signals", [])
+            signals=tuple(_read_signal(item) for item in graph.get("signals", [])),
+            groups=tuple(
+                SignalGroup(
+                    name=str(item.get("name", "")),
+                    signals=tuple(_read_signal(entry) for entry in item.get("signals", [])),
+                    expanded=bool(item.get("expanded", True)),
+                )
+                for item in graph.get("groups", [])
             ),
             cursors=tuple((cursors + [0.0, 0.0])[:2]),
             measure=bool(graph.get("measure", False)),
+            plot_mode=bool(graph.get("plot_mode", False)),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise WorkspaceError(f"Workspace {path.name} has an invalid entry: {exc}") from exc

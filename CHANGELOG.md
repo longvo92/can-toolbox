@@ -12,12 +12,15 @@ for the procedure.
 
 ### Added
 
+- A **signal list beside the graph**: group signals, tick what is plotted, and read each one's value at both cursors with Min, Max and Delta over the measured span or the visible range. Right-click for groups, Move to Group, Delete and a Ctrl+click plot mode where the selection is what the graph shows; drag to reorder or regroup, and hide columns from the header menu.
+- The **Signal Browser** is its own window now, with Channel and Message filters beside the search box, and several signals can be added at once.
 - **File → Recent Logs** reopens any of the last eight logs you had open.
 - The graph has its own toolbar: Fit (with Fit X and Fit Y in its menu), zoom, both cursors, **◀ / ▶** to step cursor 1 through the value changes of the selected signal, remove or clear plots, and **Image** to save the plots as a PNG or copy them to the clipboard. Δt sits at the end of it.
 - **Settings → Line width** sets how thick the curves are drawn, from 1 to 4 px.
 
 ### Changed
 
+- Workspaces keep the groups, the colour of each signal and what is hidden (format 2). Workspaces saved by 2.0 still open; their signals come back as one ungrouped list.
 - The window lost its toolbar: opening logs, DBCs, workspaces and Export are in **File**, and everything about the graph is on the graph.
 - Plots are shorter and name their signal on the left axis, in the colour of the curve, with a rule between lanes — so more signals fit on screen.
 - New light and dark palettes: a flat instrument grey in light, editor greys in dark, with crisper toolbars and plot backgrounds.

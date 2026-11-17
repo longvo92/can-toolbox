@@ -17,9 +17,21 @@ Sáng hoặc Tối), độ dày đường đồ thị và đường dẫn MATLAB
 
 ### Đồ thị
 
-Mở **Hiển thị → Danh sách signal**, gõ vào ô **Tìm signal**, rồi nhấp đúp một signal, kéo
-thả vào đồ thị, hoặc chọn nhiều signal và bấm **Thêm vào đồ thị**. Mỗi signal có một plot
-riêng trên cùng trục thời gian và giữ giá trị cho tới frame kế tiếp.
+Mở **Hiển thị → Danh sách signal**: đây là cửa sổ riêng, có ô tìm kiếm và bộ lọc
+**Channel**, **Message**. Nhấp đúp một signal, kéo thả cả nhóm đã chọn vào đồ thị, hoặc bấm
+**Thêm vào đồ thị**. Mỗi signal có một plot riêng trên cùng trục thời gian và giữ giá trị
+cho tới frame kế tiếp.
+
+Bảng bên trái đồ thị là danh sách đang vẽ. Mỗi dòng hiện tên signal theo màu đường vẽ, giá
+trị tại **Cursor 1** và **Cursor 2**, cùng **Min**, **Max** và **Chênh lệch** — tính trên
+khoảng giữa hai cursor khi đang đo, còn lại tính trên khoảng thời gian đang hiển thị. Bỏ tick
+một dòng để giữ signal trong danh sách mà không vẽ; cột Cursor 2 và Chênh lệch chỉ hiện khi
+bật cursor thứ hai, các cột khác ẩn/hiện qua menu chuột phải trên header.
+
+Chuột phải vào danh sách có **Thêm signal…**, **Nhóm mới**, **Đổi tên**, **Xóa**,
+**Chuyển sang nhóm**, **Mở hết/Thu hết** và **Chế độ vẽ theo lựa chọn** (các dòng đang chọn
+chính là các plot đang vẽ). Kéo thả để sắp xếp hoặc chuyển nhóm, nhấn Delete để gỡ. Đồ thị vẽ
+tối đa 16 plot cùng lúc; danh sách thì không giới hạn.
 
 Đồ thị có toolbar riêng:
 
