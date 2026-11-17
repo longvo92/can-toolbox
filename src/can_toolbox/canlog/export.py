@@ -243,9 +243,12 @@ def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Pat
     """Decode the cut through the BLF → MAT engine, once per signal format."""
     from can_toolbox.blf_mat.config import load_config
     from can_toolbox.blf_mat.converter import SelectedPaths, convert
-    from can_toolbox.blf_mat.options import find_matlab_executable
+    from can_toolbox.blf_mat.options import default_config_path, find_matlab_executable
 
-    config = load_config(job.config_path)
+    # Without a config the file beside the app applies, as it does for a conversion.
+    config = load_config(job.config_path or default_config_path())
+    # The cut already carries the new channel numbers, so the scopes follow the map.
+    remap = dict(job.request.channel_map)
     written: list[Path] = []
     for fmt in job.signal_formats:
         stem = signal_stem(job.base_name, fmt)
@@ -254,7 +257,10 @@ def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Pat
             blf_files=[source],
             output_folder=job.folder,
             dbc_sources=[path for path, _channel in job.dbc_paths],
-            dbc_channels={str(path.resolve()): channel for path, channel in job.dbc_paths if channel},
+            dbc_channels={
+                str(path.resolve()): remap.get(channel, channel)
+                for path, channel in job.dbc_paths if channel
+            },
             excel=job.excel,
             config=config,
             matlab_exe=find_matlab_executable(job.matlab or None) if fmt == "dataset" else None,
