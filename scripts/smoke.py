@@ -139,18 +139,27 @@ def stage_gui(_workdir: Path) -> None:
     from PySide6.QtWidgets import QApplication
 
     from can_toolbox.ui.app import configure_appearance
-    from can_toolbox.ui.main_window import MainWindow
+    from can_toolbox.ui.main_window import BLF_TOOL, COMPARE_TOOL, MainWindow
 
     app = QApplication.instance() or QApplication([])
     configure_appearance(app)
     window = MainWindow()
     try:
-        titles = [window.tabs.tabText(index) for index in range(window.tabs.count())]
-        if not titles:
-            raise AssertionError("main window has no tabs")
+        docks = [window.trace_dock, window.browser_dock, window.details_dock]
+        titles = [dock.windowTitle() for dock in docks]
+        if not all(titles):
+            raise AssertionError(f"log viewer dock without a title: {titles}")
+        if window.centralWidget() is not window.graph:
+            raise AssertionError("Graphics is not the central widget")
         window.show()
         app.processEvents()
-        print(f"gui: tabs {titles}")
+        tools = []
+        for key in (COMPARE_TOOL, BLF_TOOL):
+            tool = window.open_tool(key)
+            tools.append(tool.windowTitle())
+            tool.close()
+        app.processEvents()
+        print(f"gui: docks {titles}, tools {tools}")
     finally:
         window.close()
         window.deleteLater()

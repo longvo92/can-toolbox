@@ -64,7 +64,7 @@ QToolButton {
     padding: 7px 24px 7px 16px;
 }
 QToolButton:hover { background: #eef2fb; }
-QToolButton:pressed { background: #e0e7f7; }
+QToolButton:pressed, QToolButton:checked { background: #e0e7f7; }
 QToolButton:disabled { color: #9aa2b1; background: #f0f1f5; }
 QToolButton::menu-indicator {
     subcontrol-origin: padding;
@@ -181,6 +181,32 @@ QComboBox QAbstractItemView {
 QLabel#hintLabel {
     color: #6b7280;
     font-size: 9pt;
+}
+QLabel#errorLabel {
+    color: #b91c1c;
+}
+QToolBar {
+    background: #eef1f8;
+    border: none;
+    border-bottom: 1px solid #e1e5ee;
+    padding: 3px 6px;
+    spacing: 4px;
+}
+QToolBar::separator {
+    background: #d4d9e4;
+    width: 1px;
+    margin: 4px 6px;
+}
+QDockWidget {
+    titlebar-close-icon: none;
+    titlebar-normal-icon: none;
+}
+QDockWidget::title {
+    background: #e7ebf5;
+    color: #334155;
+    font-weight: 600;
+    padding: 5px 8px;
+    border-bottom: 1px solid #d4d9e4;
 }
 QPlainTextEdit {
     background: #ffffff;
