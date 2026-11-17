@@ -299,3 +299,25 @@ def test_mapped_standard_mat_does_not_launch_matlab(sample, monkeypatch):
     monkeypatch.setattr(core, "run_matlab_batch", forbidden)
     run(**{**sample["options"], "output_format": "mat"})
     assert scenario(sample, "sample_input.mat")["BSW_CanInp"]["Speed"]["Data"].tolist() == [0, 2, 4]
+
+
+def test_txt_keeps_excel_skip_keywords(tmp_path):
+    """A TXT round trip that dropped the filter would quietly re-add skipped rows."""
+    source = tmp_path / "mapping.yaml"
+    source.write_text(
+        "version: 2\nexcel_skip_keywords: [obsolete, draft]\n"
+        "interfaces:\n  - name: Bus\n    side: input\n    elements:\n"
+        "      - element: Speed\n        dtype: single\n        can_signal: SpeedCAN\n",
+        encoding="utf-8",
+    )
+    written = write_config(tmp_path / "mapping.txt", load_config(source))
+    reread = load_config(written)
+    assert reread.excel_skip_keywords == ("obsolete", "draft")
+    assert [bus["name"] for bus in reread.interfaces["input"]] == ["Bus"]
+
+
+def test_options_section_rejects_other_keys(tmp_path):
+    bad = tmp_path / "mapping.txt"
+    bad.write_text("[options]\n    nonsense = 1\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match=r"unknown option 'nonsense' in \[options\]"):
+        load_config(bad)

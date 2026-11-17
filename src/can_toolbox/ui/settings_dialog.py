@@ -47,6 +47,11 @@ def theme_mode(settings: QSettings) -> str:
     return mode if mode in app_theme.MODES else "system"
 
 
+# Workers keep running after the dialog closes; destroying a live QThread aborts the
+# process, so they stay referenced here until they finish.
+_RUNNING: set[QThread] = set()
+
+
 class EnvironmentWorker(QThread):
     """Report the runtime the converter needs; never starts MATLAB."""
 
@@ -199,9 +204,14 @@ class SettingsDialog(QDialog):
         self.log_view.clear()
         self.status_label.setText(self._tr("Checking environment…"))
         self.check_button.setEnabled(False)
-        self.worker = EnvironmentWorker(self.matlab_input.text().strip(), require_matlab=False)
+        matlab = self.matlab_input.text().strip()
+        # A path the user set has to resolve; with none, MATLAB stays optional.
+        self.worker = EnvironmentWorker(matlab, require_matlab=bool(matlab))
         self.worker.log.connect(self._log_lines)
         self.worker.finished_check.connect(self._checked)
+        _RUNNING.add(self.worker)
+        worker = self.worker
+        worker.finished.connect(lambda: _RUNNING.discard(worker))
         self.worker.start()
 
     def _log_lines(self, lines: list) -> None:
@@ -218,7 +228,10 @@ class SettingsDialog(QDialog):
             self.worker.wait(timeout_ms)
 
     def done(self, result: int) -> None:
-        self.wait_for_workers()
+        """Close at once; a running check finishes on its own, writing nowhere."""
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.log.disconnect()
+            self.worker.finished_check.disconnect()
         super().done(result)
 
 

@@ -56,6 +56,9 @@ class Theme:
     error: str
     check_disabled: str
     chevron: str
+    alternate: str
+    link: str
+    code_bg: str
     # Graphics: pyqtgraph paints these itself, so they never reach the stylesheet.
     plot_bg: str
     plot_fg: str
@@ -104,6 +107,9 @@ LIGHT = Theme(
     error="#b91c1c",
     check_disabled="#94a3b8",
     chevron="#475569",
+    alternate="#f8fafc",
+    link="#1d4ed8",
+    code_bg="#f1f5f9",
     plot_bg="#ffffff",
     plot_fg="#1f2430",
     cursor_primary="#111827",
@@ -149,6 +155,9 @@ DARK = Theme(
     error="#ff7b72",
     check_disabled="#49546a",
     chevron="#9aa6bd",
+    alternate="#1e242f",
+    link="#7fb0ff",
+    code_bg="#222a38",
     plot_bg="#0f1218",
     plot_fg="#d6dcea",
     cursor_primary="#e8edf7",
@@ -388,26 +397,63 @@ QScrollArea#workspaceScroll QScrollBar::add-line:vertical,
 QScrollArea#workspaceScroll QScrollBar::sub-line:vertical { height: 0; }
 QScrollArea#workspaceScroll QScrollBar::add-page:vertical,
 QScrollArea#workspaceScroll QScrollBar::sub-page:vertical { background: transparent; }
-QTabWidget#toolTabs::pane {
-    border: none;
-    border-top: 1px solid $border_soft;
-    top: -1px;
+QTableView, QTreeWidget, QTableWidget {
+    alternate-background-color: $alternate;
+    selection-background-color: $accent_soft;
+    selection-color: $text;
+    outline: none;
 }
-QTabWidget#toolTabs > QTabBar::tab {
+QTableView::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected,
+QListWidget::item:selected {
+    background: $accent_soft;
+    color: $text;
+}
+QHeaderView::section:hover { background: $hover; }
+QScrollBar:vertical {
     background: transparent;
-    color: $muted_strong;
+    width: 11px;
+    margin: 0;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 11px;
+    margin: 0;
+}
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: $scroll;
+    border-radius: 4px;
+    min-height: 28px;
+    min-width: 28px;
+    margin: 2px;
+}
+QScrollBar::handle:hover { background: $scroll_hover; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QSplitter::handle {
+    background: $border_soft;
+}
+QSplitter::handle:hover { background: $accent; }
+QToolTip {
+    background: $surface;
+    color: $text;
+    border: 1px solid $border;
+    padding: 4px 6px;
+}
+QMenu::separator {
+    height: 1px;
+    background: $border_soft;
+    margin: 4px 8px;
+}
+/* Radio buttons keep the Fusion indicator: it follows the palette in both themes,
+   and a stylesheet one cannot draw the inner dot without an image. */
+QRadioButton { spacing: 6px; }
+QStatusBar::item { border: none; }
+QStatusBar QLabel { color: $subtle; }
+QDockWidget::close-button, QDockWidget::float-button {
     border: none;
-    border-bottom: 2px solid transparent;
-    padding: 8px 18px;
-    margin-right: 4px;
-    font-weight: 600;
+    background: transparent;
+    padding: 0;
 }
-QTabWidget#toolTabs > QTabBar::tab:hover { color: $text; background: $hover; }
-QTabWidget#toolTabs > QTabBar::tab:selected {
-    color: $accent;
-    border-bottom: 2px solid $accent;
-}
-QTabWidget#toolTabs > QTabBar::tab:disabled { color: $disabled_text; }
 """)
 
 

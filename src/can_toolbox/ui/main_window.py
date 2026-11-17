@@ -21,7 +21,7 @@ from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.ui.logview.window import LogViewerWindow
 from can_toolbox.ui.settings_dialog import migrate_tool_settings, open_settings, theme_mode
-from can_toolbox.ui.theme import configure_appearance
+from can_toolbox.ui.theme import configure_appearance, current_theme
 from can_toolbox.ui.tool_windows import ToolWindow
 from can_toolbox.ui.widgets import dialog_buttons
 
@@ -241,16 +241,26 @@ class MainWindow(LogViewerWindow):
             return
         self._show_markdown(title, content or self._tr("No release notes available."))
 
-    def _show_markdown(self, title: str, content: str) -> None:
-        content = content.replace("{version}", __version__)
+    def markdown_viewer(self, content: str) -> QTextBrowser:
+        """Help text in the current theme; QTextBrowser styles its document itself."""
+        theme = current_theme()
+        viewer = QTextBrowser()
+        viewer.setOpenExternalLinks(True)
+        viewer.document().setDefaultStyleSheet(
+            f"a {{ color: {theme.link}; }}"
+            f"code, pre {{ background-color: {theme.code_bg}; color: {theme.text}; }}"
+            f"h1, h2, h3 {{ color: {theme.heading}; }}"
+            f"table, td, th {{ border: 1px solid {theme.border}; }}"
+        )
+        viewer.setMarkdown(content.replace("{version}", __version__))
+        return viewer
 
+    def _show_markdown(self, title: str, content: str) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
         dialog.resize(720, 560)
         layout = QVBoxLayout(dialog)
-        viewer = QTextBrowser()
-        viewer.setOpenExternalLinks(True)
-        viewer.setMarkdown(content)
+        viewer = self.markdown_viewer(content)
         buttons = dialog_buttons(self.gui_language, QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(viewer)
