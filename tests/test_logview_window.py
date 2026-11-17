@@ -289,7 +289,7 @@ def test_export_writes_every_selected_format_from_one_cut(window, log_files, tmp
     _load(window, log_files[0])
     window.filters.filter_input.setText("engine")
     window.filters.filter_input.returnPressed.emit()
-    dialog = _dialog(window, tmp_path, dbc_paths=(log_files[1],))
+    dialog = _dialog(window, tmp_path, dbc_paths=((log_files[1], 0),))
     dialog.custom.setChecked(True)
     dialog.start_input.setText("0.2")
     dialog.end_input.setText("0.25")

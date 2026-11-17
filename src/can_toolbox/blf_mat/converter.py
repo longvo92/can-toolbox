@@ -199,6 +199,8 @@ class SelectedPaths:
     # Frames the caller already holds, for example the cut the Log Viewer exports.
     tables: dict[Path, Any] = field(default_factory=dict)
     base_name: str = ""
+    # DBC file -> CAN channel it was assigned to (0 or missing: every channel).
+    dbc_channels: dict[str, int] = field(default_factory=dict)
 
 
 # -----------------------------------------------------------------------------
@@ -695,8 +697,13 @@ def decode_blf(
 def decode_table(
     table: Any,
     requests: dict[str, list[DbcCandidate]],
+    dbc_channels: dict[str, int] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], float]:
-    """Decode the requested signals from frames already in memory."""
+    """Decode the requested signals from frames already in memory.
+
+    ``dbc_channels`` maps a DBC file to the CAN channel it was assigned to, so a
+    database scoped to one bus never decodes the same ID on another one.
+    """
     from can_toolbox.canlog.decode import MessageCodec, rows_by_message
 
     if not len(table):
@@ -718,7 +725,10 @@ def decode_table(
     for msg_key, (message, names) in tasks.items():
         codec = MessageCodec(message)
         rows = groups.get(codec.key)
-        if rows is None:
+        channel = (dbc_channels or {}).get(msg_key[0], 0)
+        if rows is not None and channel:
+            rows = rows[table.channel[rows] == channel]
+        if rows is None or not len(rows):
             decoded_rows[msg_key] = {}
             continue
         signals = codec.decode(table, rows, names)
@@ -1146,7 +1156,7 @@ def _convert(paths: SelectedPaths) -> int:
             table = paths.tables.get(blf_path)
             if paths.dbc_sources:
                 decoded, duration = (
-                    decode_table(table, decode_requests) if table is not None
+                    decode_table(table, decode_requests, paths.dbc_channels) if table is not None
                     else decode_blf(blf_path, decode_requests)
                 )
             else:
