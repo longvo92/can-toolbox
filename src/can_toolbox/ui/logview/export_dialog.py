@@ -53,7 +53,7 @@ class ExportDialog(QDialog):
         total_count: int,
         folder: str,
         base_name: str,
-        dbc_paths: tuple[Path, ...] = (),
+        dbc_paths: tuple[tuple[Path, int], ...] = (),
     ) -> None:
         super().__init__(parent)
         self._binder = binder

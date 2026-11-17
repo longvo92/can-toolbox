@@ -70,7 +70,8 @@ class ExportJob:
     formats: tuple[str, ...]
     folder: Path
     base_name: str
-    dbc_paths: tuple[Path, ...] = ()
+    # (DBC file, channel); channel 0 means the database decodes every channel.
+    dbc_paths: tuple[tuple[Path, int], ...] = ()
     excel: Path | None = None
     config_path: Path | None = None
     matlab: str = ""
@@ -233,6 +234,11 @@ def run_export(
     return JobResult(len(table), tuple(written), tuple(warnings))
 
 
+def signal_stem(base_name: str, fmt: str) -> str:
+    """Datasets get their own stem, so both MAT representations survive one run."""
+    return base_name if fmt == "signals" else f"{base_name}_dataset"
+
+
 def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Path]:
     """Decode the cut through the BLF → MAT engine, once per signal format."""
     from can_toolbox.blf_mat.config import load_config
@@ -240,22 +246,24 @@ def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Pat
     from can_toolbox.blf_mat.options import find_matlab_executable
 
     config = load_config(job.config_path)
-    source = job.folder / f"{job.base_name}.blf"  # a name for the logs, never read
     written: list[Path] = []
     for fmt in job.signal_formats:
+        stem = signal_stem(job.base_name, fmt)
+        source = job.folder / f"{stem}.blf"  # a name for the logs, never read
         paths = SelectedPaths(
             blf_files=[source],
             output_folder=job.folder,
-            dbc_sources=list(job.dbc_paths),
+            dbc_sources=[path for path, _channel in job.dbc_paths],
+            dbc_channels={str(path.resolve()): channel for path, channel in job.dbc_paths if channel},
             excel=job.excel,
             config=config,
             matlab_exe=find_matlab_executable(job.matlab or None) if fmt == "dataset" else None,
             output_format="mat" if fmt == "signals" else "dataset",
             tables={source: table},
-            base_name=job.base_name,
+            base_name=stem,
         )
         convert(paths, log_callback=log_callback)
-        written.extend(sorted(job.folder.glob(f"{job.base_name}*.mat")))
+        written.extend(sorted(job.folder.glob(f"{stem}*.mat")))
     return list(dict.fromkeys(written))
 
 

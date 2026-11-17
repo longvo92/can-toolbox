@@ -620,7 +620,7 @@ class LogViewerWindow(QMainWindow):
             cursors=tuple(self.graph.cursor_time) if self.graph.measuring and self.graph.series else None,
             filtered_count=len(view.rows), total_count=len(view.order),
             folder=folder or str(log_path.parent), base_name=f"{log_path.stem}_cut",
-            dbc_paths=tuple(Path(path) for path, _channel in self.dbc_assignments),
+            dbc_paths=tuple((Path(path), int(channel)) for path, channel in self.dbc_assignments),
         )
         try:
             if dialog.exec() != QDialog.DialogCode.Accepted:
