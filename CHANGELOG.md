@@ -12,12 +12,10 @@ for the procedure.
 
 ### Added
 
-- **Log Viewer** tab: open BLF, ASC or MF4 logs as a CANoe-style trace with per-channel DBCs, decoded signal values, ID/range/name filters, find, fixed-position mode, absolute or relative time and per-message statistics.
-- Log Viewer graphics: plot DBC signals on a shared time axis with sample-and-hold steps, a cursor synchronized with the trace and a second cursor for differences.
-- Log Viewer **Export…**: cut by time range or graph cursors, trace filter and channel mapping, and save as BLF, ASC, MF4, CSV or MAT.
-- Log Viewer workspaces save and reopen the log, DBCs, trace settings, plotted signals and cursors.
-
-- One **Export** window for the open log: pick the range (whole log, between cursors or the trace filter), tick the formats to write — BLF, ASC, MF4, CSV, MAT frames, MAT signals, Simulink Dataset — and they are all written from the same cut.
+- A **log viewer**, and it is now the app itself: open BLF, ASC or MF4 logs as a CANoe-style trace with per-channel DBCs, decoded signal values, ID/range/name filters, find, fixed-position mode, absolute or relative time and per-message statistics.
+- **Graphics**: plot DBC signals on a shared time axis with sample-and-hold steps, a cursor synchronized with the trace and a second cursor for differences.
+- **Workspaces** save and reopen the log, DBCs, trace settings, plotted signals and cursors.
+- One **Export** window for the open log: pick the range (whole log, between cursors or the trace filter), add a channel map and a time base, tick the formats to write — BLF, ASC, MF4, CSV, MAT frames, MAT signals, Simulink Dataset — and they are all written from the same cut.
 - Mapping files can be written as **YAML, JSON or TXT**; all three describe the same thing. **Save upgraded config…** rewrites an older file in the new schema, and **Save Excel template…** writes a workbook with the fixed columns.
 - Log Viewer toolbar icons for **Fit**, **Fit X**, **Fit Y**, zoom and the two cursors. Fit X shows the whole log, Fit Y rescales every plot to the time range on screen, and Fit does both.
 - Right-click the trace to plot every signal of a message, move the cursor, or open **Signal Values**, **Statistics**, **Log Info** and the signal search as their own windows.
@@ -29,8 +27,8 @@ for the procedure.
 - Signal export now decodes the frames the Log Viewer already holds, so a range or a trace filter applies to MAT signals and Datasets too.
 - The MATLAB executable moved from the BLF → MAT window into **Settings**; the one you had set is carried over.
 - The app opens straight into the Log Viewer, on a minimal screen: toolbar, Graphics and Trace. The filter bar, Signal Browser, Signal Values, Statistics and Log Info are one click away in **View**, and the layout comes back the way you left it.
-- **DBC Compare** and **BLF → MAT** now open from the **Tools** menu, each in its own window, so a comparison can run while you read a log.
-- **BLF → MAT** reads and decodes logs many times faster; output files are unchanged.
+- **DBC Compare** opens from the **Tools** menu in its own window, so a comparison can run while you read a log.
+- Converting to MAT reads and decodes logs many times faster; the MAT layouts are unchanged.
 - The conversion log names BLF content that MAT files cannot carry, such as markers or comments.
 
 ### Removed
