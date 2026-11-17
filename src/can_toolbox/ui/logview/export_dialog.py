@@ -23,6 +23,14 @@ from PySide6.QtWidgets import (
 
 from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, section
 
+
+def _default_config():
+    """The mapping file beside the application, which the engine also falls back to."""
+    from can_toolbox.blf_mat.options import default_config_path
+
+    return default_config_path()
+
+
 CONFIG_FILTER = "Mapping config (*.yaml *.yml *.json *.txt)"
 EXCEL_FILTER = "Excel template (*.xlsx *.xlsm)"
 SETTINGS_PREFIX = "logview/"
@@ -61,6 +69,7 @@ class ExportDialog(QDialog):
         self._settings = settings
         self._cursors = cursors
         self._dbc_paths = dbc_paths
+        self._default_config = _default_config()
         self.job = None
         tr = self._tr
         self.setWindowTitle(tr("Export Log"))
@@ -163,7 +172,10 @@ class ExportDialog(QDialog):
         ))
         grid.addWidget(self.dbc_label, 0, 0, 1, 4)
         self.config_input = QLineEdit()
-        self.config_input.setPlaceholderText(self._tr("Optional: YAML, JSON or TXT mapping"))
+        self.config_input.setPlaceholderText(
+            self._tr("Automatic: {path}", path=self._default_config) if self._default_config
+            else self._tr("Optional: YAML, JSON or TXT mapping")
+        )
         self.excel_input = QLineEdit()
         self.excel_input.setPlaceholderText(self._tr("Optional: Excel template"))
         self._path_row(grid, 1, "Mapping config", self.config_input, CONFIG_FILTER)
@@ -226,6 +238,7 @@ class ExportDialog(QDialog):
         self.upgrade_button.setEnabled(bool(self.config_input.text().strip()))
         missing = needs_signals and not (
             self._dbc_paths or self.config_input.text().strip() or self.excel_input.text().strip()
+            or self._default_config
         )
         if missing:
             self.error_label.setText(self._tr(
@@ -298,7 +311,7 @@ class ExportDialog(QDialog):
             if path is not None and not path.is_file():
                 raise ValueError(self._tr("{label} does not exist: {path}", label=self._tr(label), path=path))
         needs_signals = any(key in formats for key in ("signals", "dataset"))
-        if needs_signals and not (self._dbc_paths or config_path or excel):
+        if needs_signals and not (self._dbc_paths or config_path or excel or self._default_config):
             raise ValueError(self._tr(
                 "MAT signals and Simulink Dataset need a DBC, an Excel template or a mapping config."
             ))
