@@ -114,7 +114,7 @@ def test_decode_blf_matches_former_per_frame_decoder(tmp_path):
     with can.BLFWriter(blf) as writer:
         for message in _messages(5000, seed=5):
             writer.on_message_received(message)
-    candidates, _ = core.load_dbc_folder(dbc)
+    candidates, _ = core.load_dbc_sources([dbc])
     requests = core.build_decode_requests(["VehSpd", "Gear", "Torque", "Temp", "Volt", "Missing"], candidates)
 
     decoded, duration = core.decode_blf(blf, requests)

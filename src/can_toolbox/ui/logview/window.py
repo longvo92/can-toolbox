@@ -23,13 +23,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from can_toolbox.ui.logview.dialogs import (
-    LOG_FILTER,
-    LOG_SUFFIXES,
-    WORKSPACE_FILTER,
-    DbcDialog,
-    ExportDialog,
-)
+from can_toolbox.ui.logview.dialogs import LOG_FILTER, LOG_SUFFIXES, WORKSPACE_FILTER, DbcDialog
+from can_toolbox.ui.logview.export_dialog import ExportDialog
 from can_toolbox.ui.logview.panels import (
     SIGNAL_VALUE_COLUMNS,
     STATISTICS_COLUMNS,
@@ -84,6 +79,7 @@ class LogViewerWindow(QMainWindow):
         self.source = None
         self.last_export = None
         self._pending_workspace = None
+        self._engine_log: list[str] = []
         self._status: tuple[str, dict] = ("Open a BLF, ASC or MF4 log.", {})
         self._restored_layout = False
         self._laid_out = False
@@ -617,29 +613,33 @@ class LogViewerWindow(QMainWindow):
         if self.view is None or self.is_busy():
             return
         view = self.view
-        duration = self.duration()
-        cursors = tuple(self.graph.cursor_time) if self.graph.measuring and self.graph.series else None
         log_path = Path(self.log_path)
-        default = self._settings.value(SETTINGS_PREFIX + "last_export", "", type=str)
-        default = str(Path(default).parent / f"{log_path.stem}_cut{Path(default).suffix}") if default else \
-            str(log_path.with_name(f"{log_path.stem}_cut.blf"))
-        dialog = ExportDialog(self, self._binder, duration=duration, cursors=cursors,
-                              filtered_count=len(view.rows), total_count=len(view.order), default_path=default)
+        folder = self._settings.value(SETTINGS_PREFIX + "export_folder", "", type=str)
+        dialog = ExportDialog(
+            self, self._binder, settings=self._settings, duration=self.duration(),
+            cursors=tuple(self.graph.cursor_time) if self.graph.measuring and self.graph.series else None,
+            filtered_count=len(view.rows), total_count=len(view.order),
+            folder=folder or str(log_path.parent), base_name=f"{log_path.stem}_cut",
+            dbc_paths=tuple((Path(path), int(channel)) for path, channel in self.dbc_assignments),
+        )
         try:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            request, path = dialog.request, dialog.path
+            job = dialog.job
         finally:
             dialog.deleteLater()
-        self.start_export(request, path)
+        self.start_export(job)
 
-    def start_export(self, request, path: Path) -> None:
-        from can_toolbox.canlog.export import export_log
+    def start_export(self, job) -> None:
+        """Run one export job off the GUI thread; the engine log goes to Log Info."""
+        from can_toolbox.canlog.export import run_export
 
         view = self.view
-        self._settings.setValue(SETTINGS_PREFIX + "last_export", str(path))
-        self.worker = Task(lambda task: export_log(view, request, path, progress=task.report,
-                                                   cancel=task.cancelled.is_set))
+        self.worker = Task(lambda task: run_export(
+            view, job, progress=task.report, cancel=task.cancelled.is_set,
+            log_callback=self._engine_log.append,
+        ))
+        self._engine_log = []
         self.worker.progress.connect(self.progress.setValue)
         self.worker.succeeded.connect(self._on_exported)
         self.worker.failed.connect(lambda message: self._set_status("Export failed: {error}", error=message))
@@ -647,16 +647,18 @@ class LogViewerWindow(QMainWindow):
         self.progress.setValue(0)
         self.progress.show()
         self.cancel_button.show()
-        self._set_status("Exporting {name}…", name=path.name)
+        self._set_status("Exporting {name}…", name=job.base_name)
         self.worker.start()
         self.busy_changed.emit(True)
         self._set_controls_enabled()
 
     def _on_exported(self, result) -> None:
         self.last_export = result
-        self._set_status("Exported {count} frames to {name}.", count=f"{result.frames:,}", name=result.path.name)
-        if result.warnings:
-            self.info.appendPlainText("\n".join(f"[!] {warning}" for warning in result.warnings))
+        self._set_status("Exported {count} frames to {count_files} file(s).",
+                         count=f"{result.frames:,}", count_files=len(result.files))
+        lines = [*self._engine_log, *(f"[!] {warning}" for warning in result.warnings)]
+        if lines:
+            self.info.appendPlainText("\n".join(str(line) for line in lines))
 
     # -- workspace -----------------------------------------------------------------
 

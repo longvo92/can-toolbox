@@ -17,6 +17,8 @@ for the procedure.
 - Log Viewer **Export…**: cut by time range or graph cursors, trace filter and channel mapping, and save as BLF, ASC, MF4, CSV or MAT.
 - Log Viewer workspaces save and reopen the log, DBCs, trace settings, plotted signals and cursors.
 
+- One **Export** window for the open log: pick the range (whole log, between cursors or the trace filter), tick the formats to write — BLF, ASC, MF4, CSV, MAT frames, MAT signals, Simulink Dataset — and they are all written from the same cut.
+- Mapping files can be written as **YAML, JSON or TXT**; all three describe the same thing. **Save upgraded config…** rewrites an older file in the new schema, and **Save Excel template…** writes a workbook with the fixed columns.
 - Log Viewer toolbar icons for **Fit**, **Fit X**, **Fit Y**, zoom and the two cursors. Fit X shows the whole log, Fit Y rescales every plot to the time range on screen, and Fit does both.
 - Right-click the trace to plot every signal of a message, move the cursor, or open **Signal Values**, **Statistics**, **Log Info** and the signal search as their own windows.
 - **Settings…** gathers the preferences that are not part of one job: GUI and report language, the theme and the MATLAB executable with **Detect** and **Check Environment**.
@@ -24,6 +26,7 @@ for the procedure.
 
 ### Changed
 
+- Signal export now decodes the frames the Log Viewer already holds, so a range or a trace filter applies to MAT signals and Datasets too.
 - The MATLAB executable moved from the BLF → MAT window into **Settings**; the one you had set is carried over.
 - The app opens straight into the Log Viewer, on a minimal screen: toolbar, Graphics and Trace. The filter bar, Signal Browser, Signal Values, Statistics and Log Info are one click away in **View**, and the layout comes back the way you left it.
 - **DBC Compare** and **BLF → MAT** now open from the **Tools** menu, each in its own window, so a comparison can run while you read a log.
@@ -32,6 +35,8 @@ for the procedure.
 
 ### Removed
 
+- The **BLF → MAT** window; everything it did is in **Export**, which works on the log you have open. Converting a whole folder in one run is gone.
+- Free-form Excel workbooks (chosen sheets, guessed columns, custom header rows) and separate input/output TXT schemas. Excel now follows the fixed template, and the TXT syntax is the mapping schema itself.
 - The zipapp download; the Windows `.exe` is the only release artifact.
 
 ## [1.0.0] - 2026-11-16

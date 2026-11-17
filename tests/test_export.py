@@ -167,3 +167,53 @@ def test_channel_map_parsing(text, expected):
 def test_channel_map_rejects(text):
     with pytest.raises(ValueError):
         parse_channel_map(text)
+
+
+_CHANNEL_DBC = '''VERSION ""
+NS_ :
+BS_:
+BU_: ECU
+BO_ 256 Shared: 2 ECU
+ SG_ Value : 0|16@1+ ({scale},0) [0|65535] "" ECU
+'''
+
+
+def test_a_channel_scoped_dbc_only_decodes_its_own_channel(tmp_path, blf_runtime):
+    """A DBC assigned to CAN 1 must not decode the same ID seen on CAN 2."""
+    from can_toolbox.blf_mat.converter import build_decode_requests, decode_table, load_dbc_sources
+
+    first = tmp_path / "bus1.dbc"
+    second = tmp_path / "bus2.dbc"
+    first.write_text(_CHANNEL_DBC.format(scale=1), encoding="ascii")
+    second.write_text(_CHANNEL_DBC.format(scale=10), encoding="ascii")
+    path = tmp_path / "two_buses.blf"
+    with can.BLFWriter(path) as writer:
+        for index, channel in enumerate((0, 1)):  # python-can channels are 0-based
+            writer.on_message_received(can.Message(
+                timestamp=100.0 + index, arbitration_id=0x100, is_extended_id=False,
+                data=[7, 0], channel=channel,
+            ))
+    table, _info = read_blf(path)
+
+    candidates, _names = load_dbc_sources([first, second])
+    requests = build_decode_requests(["Value"], candidates)
+
+    # Without scopes a database decodes every bus that carries the ID.
+    unscoped, _duration = decode_table(table, requests)
+    assert unscoped["value"]["samples"] == 2
+
+    scopes = {str(first.resolve()): 1, str(second.resolve()): 2}
+    decoded, _duration = decode_table(table, requests, scopes)
+    chosen = decoded["value"]["candidate"]
+    assert chosen is not None
+    # Both databases describe ID 0x100; each may only use the frames of its own bus.
+    assert decoded["value"]["samples"] == 1
+    scale = 1 if chosen.dbc_file == str(first.resolve()) else 10
+    assert decoded["value"]["data"].tolist() == [7 * scale]
+
+
+def test_dataset_and_mat_signals_get_their_own_stem():
+    from can_toolbox.canlog.export import signal_stem
+
+    assert signal_stem("drive_cut", "signals") == "drive_cut"
+    assert signal_stem("drive_cut", "dataset") == "drive_cut_dataset"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -50,20 +49,13 @@ def test_full_python_pipeline(sample, monkeypatch):
     assert "Simulink.SimulationData.Dataset" in captured[0]
 
 
-def test_batch_duplicate_stems_one_matlab_launch(sample, monkeypatch):
-    root = sample["root"] / "logs"
-    for directory in (root / "a", root / "b"):
-        directory.mkdir(parents=True)
-        shutil.copy2(sample["blf"], directory / "same.blf")
+def test_base_name_overrides_the_log_stem(sample, monkeypatch):
     captured = []
     monkeypatch.setattr(core, "run_matlab_batch", fake_packager(captured))
-    run(**{**sample["options"], "blf": str(root)})
-    assert len(captured) == 3
-    assert sorted(p.name for p in sample["output"].glob("*.mat")) == [
-        "same_2_input.mat",
-        "same_2_output.mat",
-        "same_input.mat",
-        "same_output.mat",
+    run(**{**sample["options"], "base_name": "cut_0_1"})
+    assert sorted(path.name for path in sample["output"].glob("*.mat")) == [
+        "cut_0_1_input.mat",
+        "cut_0_1_output.mat",
     ]
 
 
@@ -82,11 +74,18 @@ def test_matlab_success_requires_both_outputs(sample, monkeypatch):
         run(**sample["options"])
 
 
-def test_schema_conflict_rejected(sample):
-    with sample["schema"].open("a") as stream:
-        stream.write("BSW_CanInp.Speed : uint8\n")
-    with pytest.raises(RuntimeError, match="Conflicting datatype"):
-        core.load_signal_schema([sample["schema"]])
+def test_duplicate_element_rejected(tmp_path):
+    from can_toolbox.blf_mat.config import ConfigError, load_config
+
+    config = tmp_path / "duplicate.yaml"
+    config.write_text(
+        "version: 2\ninterfaces:\n  - name: Bus\n    side: input\n    elements:\n"
+        "      - element: Value\n        dtype: single\n"
+        "      - element: Value\n        dtype: uint8\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="already defined"):
+        load_config(config)
 
 
 @pytest.mark.parametrize("formula", ["__import__('os')", "x.real", "x[0]", "sum(x)"])
@@ -114,12 +113,29 @@ def test_duplicate_timestamps_keep_last():
 
 
 def test_force_mapping_conflict_rejected(tmp_path):
+    from can_toolbox.blf_mat.config import ConfigError, load_config
+
     config = tmp_path / "bad.yaml"
     config.write_text(
-        "input_mappings:\n- {interface: Bus, element: Value, can_signal: CAN}\ninput_forces:\n- {interface: Bus, element: Value, value: 1}\n"
+        "input_mappings:\n- {interface: Bus, element: Value, can_signal: CAN}\n"
+        "input_forces:\n- {interface: Bus, element: Value, value: 1}\n",
+        encoding="utf-8",
     )
-    with pytest.raises(RuntimeError, match="both input_mappings and input_forces"):
-        core.parse_input_mapping_config(core.load_mapping_config(config))
+    with pytest.raises(ConfigError, match="already defined"):
+        load_config(config)
+
+
+def test_an_element_cannot_have_a_can_source_and_a_constant(tmp_path):
+    from can_toolbox.blf_mat.config import ConfigError, load_config
+
+    config = tmp_path / "both.yaml"
+    config.write_text(
+        "version: 2\ninterfaces:\n  - name: Bus\n    side: input\n    elements:\n"
+        "      - element: Value\n        dtype: single\n        can_signal: CAN\n        value: 3\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="either 'can_signal' or a constant 'value'"):
+        load_config(config)
 
 
 def test_matlab_command_and_quoting(tmp_path, monkeypatch):

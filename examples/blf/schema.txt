@@ -1,5 +1,11 @@
-# Synthetic interface names; dimensions are scalar.
-# Element names match DBC signal names. Select this file as input or output schema.
-VehicleInputs.VehicleSpeed : single
-VehicleInputs.Enable : boolean
-ControllerOutputs.Request : uint8
+# Mapping, schema version 2, TXT syntax.
+# Sections pick the side; indented options describe the element.
+[input]
+VehicleInputs.VehicleSpeed: single
+    can_signal = VehicleSpeedCAN
+    formula = /10
+VehicleInputs.Enable: boolean
+    value = true
+[output]
+ControllerOutputs.Request: uint8
+    can_signal = RequestCAN

@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "interfaces": [
+    {
+      "name": "VehicleInputs",
+      "side": "input",
+      "elements": [
+        {
+          "element": "VehicleSpeed",
+          "dtype": "single",
+          "can_signal": "VehicleSpeedCAN",
+          "formula": "/10",
+          "status_mapping": {
+            "10": 1,
+            "20": 2
+          }
+        },
+        {
+          "element": "Enable",
+          "dtype": "boolean",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "ControllerOutputs",
+      "side": "output",
+      "elements": [
+        {
+          "element": "Request",
+          "dtype": "uint8",
+          "can_signal": "RequestCAN"
+        }
+      ]
+    }
+  ]
+}
