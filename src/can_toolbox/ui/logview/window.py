@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import datetime
 import json
+from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,7 +19,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QToolBar,
-    QToolButton,
     QTreeWidgetItem,
     QWidget,
 )
@@ -43,9 +43,11 @@ from can_toolbox.ui.theme import manager as theme_manager
 from can_toolbox.ui.widgets import TextBinder
 
 SETTINGS_PREFIX = "logview/"
-STATE_VERSION = 2
+# 3: the main toolbar was removed, so a layout saved with it must not be restored.
+STATE_VERSION = 3
 BROWSER_WIDTH = 260
 ZOOM_STEP = 1.6
+RECENT_LOGS = 8
 
 
 class LogViewerWindow(QMainWindow):
@@ -90,8 +92,8 @@ class LogViewerWindow(QMainWindow):
         self.resize(1280, 860)
         self.setMinimumSize(880, 600)
         self.setAcceptDrops(True)
-        self._build_widgets()
         self._build_actions()
+        self._build_widgets()
         self._build_docks()
         self._build_toolbars()
         self._build_status_bar()
@@ -112,7 +114,10 @@ class LogViewerWindow(QMainWindow):
         self.signal_values = build_signal_values()
         self.statistics = build_statistics_table()
         self.info = build_info_view()
-        self.graph = GraphPanel(self._binder)
+        from can_toolbox.ui.settings_dialog import line_width
+
+        self.graph = GraphPanel(self._binder, actions=self.graph_actions)
+        self.graph.set_line_width(line_width(self._settings))
         self.signal_browser = SignalBrowser(self._binder)
         self.filters = FilterBar(self._binder)
         # Graphics is the work surface every dock arranges itself around. Without a
@@ -208,31 +213,7 @@ class LogViewerWindow(QMainWindow):
         self.resizeDocks([self.trace_dock], [320], Qt.Orientation.Vertical)
 
     def _build_toolbars(self) -> None:
-        self.toolbar = QToolBar(self)
-        self.toolbar.setObjectName("mainToolBar")
-        self._binder.bind(self.toolbar.setWindowTitle, "Main toolbar")
-        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.toolbar.setIconSize(QSize(20, 20))
-        for action in (self.open_action, self.reload_action, self.dbc_action, self.export_action):
-            self.toolbar.addAction(action)
-        self.workspace_button = QToolButton(self.toolbar)
-        self.workspace_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self._binder.bind(self.workspace_button.setText, "Workspace")
-        workspace_menu = QMenu(self.workspace_button)
-        workspace_menu.addAction(self.open_workspace_action)
-        workspace_menu.addAction(self.save_workspace_action)
-        self.workspace_button.setMenu(workspace_menu)
-        self.toolbar.addWidget(self.workspace_button)
-        self.toolbar.addSeparator()
-        for action in (self.fit_action, self.fit_x_action, self.fit_y_action,
-                       self.zoom_in_action, self.zoom_out_action):
-            self.toolbar.addAction(action)
-        self.toolbar.addSeparator()
-        for action in (self.cursor1_action, self.cursor2_action):
-            self.toolbar.addAction(action)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
-
-        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        """Only the filter bar; the log actions live in File, the graph ones on its toolbar."""
         self.filter_toolbar = QToolBar(self)
         self.filter_toolbar.setObjectName("filterToolBar")
         self._binder.bind(self.filter_toolbar.setWindowTitle, "Filter bar")
@@ -264,6 +245,10 @@ class LogViewerWindow(QMainWindow):
         self._binder.bind(self.file_menu.setTitle, "File")
         for action in (self.open_action, self.reload_action):
             self.file_menu.addAction(action)
+        self.recent_menu = QMenu(self.file_menu)
+        self._binder.bind(self.recent_menu.setTitle, "Recent Logs")
+        self.file_menu.addMenu(self.recent_menu)
+        self._fill_recent_menu()
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.dbc_action)
         self.file_menu.addSeparator()
@@ -286,10 +271,9 @@ class LogViewerWindow(QMainWindow):
         for action in self.graph_actions:
             self.view_menu.addAction(action)
         self.view_menu.addSeparator()
-        for bar, key in ((self.toolbar, "Main toolbar"), (self.filter_toolbar, "Filter bar")):
-            action = bar.toggleViewAction()
-            self._binder.bind(action.setText, key)
-            self.view_menu.addAction(action)
+        filter_action = self.filter_toolbar.toggleViewAction()
+        self._binder.bind(filter_action.setText, "Filter bar")
+        self.view_menu.addAction(filter_action)
 
     def _build_extra_menus(self) -> None:
         """Hook: menus the application shell appends after File and View."""
@@ -393,7 +377,6 @@ class LogViewerWindow(QMainWindow):
         self.export_action.setEnabled(loaded and not busy)
         self.open_workspace_action.setEnabled(not busy)
         self.save_workspace_action.setEnabled(loaded and not busy)
-        self.workspace_button.setEnabled(not busy)
         self.filters.set_controls_enabled(loaded and not busy)
         self.signal_browser.set_controls_enabled(loaded and not busy)
         for action in self.graph_actions:
@@ -401,6 +384,31 @@ class LogViewerWindow(QMainWindow):
         for action in (self.statistics_action, self.info_action, self.signal_values_action,
                        self.signal_search_action):
             action.setEnabled(loaded and not busy)
+
+    # -- recent logs ---------------------------------------------------------------
+
+    def recent_logs(self) -> list[str]:
+        """The last logs that were opened, newest first; missing files are dropped."""
+        raw = self._settings.value(SETTINGS_PREFIX + "recent", "[]", type=str)
+        try:
+            paths = [str(path) for path in json.loads(raw)]
+        except (ValueError, TypeError):
+            return []
+        return [path for path in paths if Path(path).is_file()][:RECENT_LOGS]
+
+    def _remember_log(self, path: str) -> None:
+        recent = [path] + [other for other in self.recent_logs() if other != path]
+        self._settings.setValue(SETTINGS_PREFIX + "recent", json.dumps(recent[:RECENT_LOGS]))
+        self._fill_recent_menu()
+
+    def _fill_recent_menu(self) -> None:
+        self.recent_menu.clear()
+        recent = self.recent_logs()
+        self.recent_menu.setEnabled(bool(recent))
+        for path in recent:
+            action = self.recent_menu.addAction(Path(path).name)
+            action.setToolTip(path)
+            action.triggered.connect(partial(self.open_log, path))
 
     def _load_assignments(self) -> list[tuple[str, int]]:
         raw = self._settings.value(SETTINGS_PREFIX + "dbc_assignments", "[]", type=str)
@@ -520,6 +528,7 @@ class LogViewerWindow(QMainWindow):
             return
         self.log_path = str(Path(path))
         self._settings.setValue(SETTINGS_PREFIX + "last_log", self.log_path)
+        self._remember_log(self.log_path)
         self._update_file_label()
         assignments = self._assignments()
         log_path = Path(self.log_path)

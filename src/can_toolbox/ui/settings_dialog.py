@@ -27,6 +27,9 @@ from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons, 
 MATLAB_KEY = "matlab/executable"
 THEME_KEY = "theme"
 LEGACY_MATLAB_KEY = "blf/matlab"
+LINE_WIDTH_KEY = "graph/line_width"
+LINE_WIDTHS = (1, 2, 3, 4)
+DEFAULT_LINE_WIDTH = 2
 
 
 def migrate_tool_settings(settings: QSettings) -> None:
@@ -45,6 +48,12 @@ def matlab_executable(settings: QSettings) -> str:
 def theme_mode(settings: QSettings) -> str:
     mode = str(settings.value(THEME_KEY, "system", type=str))
     return mode if mode in app_theme.MODES else "system"
+
+
+def line_width(settings: QSettings) -> int:
+    """Curve thickness for the graph, in pixels."""
+    value = settings.value(LINE_WIDTH_KEY, DEFAULT_LINE_WIDTH, type=int)
+    return value if value in LINE_WIDTHS else DEFAULT_LINE_WIDTH
 
 
 # Workers keep running after the dialog closes; destroying a live QThread aborts the
@@ -89,6 +98,7 @@ class SettingsDialog(QDialog):
         report_language: str,
         mode: str,
         matlab: str,
+        width: int = DEFAULT_LINE_WIDTH,
     ) -> None:
         super().__init__(parent)
         self._binder = binder
@@ -115,6 +125,9 @@ class SettingsDialog(QDialog):
             current=mode,
         )
         self._row(appearance_form, 0, "Theme", self.theme_input)
+        self.line_width_input = self._combo(*((f"{width} px", str(width)) for width in LINE_WIDTHS),
+                                            current=str(width))
+        self._row(appearance_form, 1, "Line width", self.line_width_input)
         layout.addWidget(appearance_card)
 
         matlab_card, matlab_form = section(binder, "MATLAB")
@@ -179,6 +192,7 @@ class SettingsDialog(QDialog):
             "gui_language": str(self.gui_input.currentData()),
             "report_language": str(self.report_input.currentData()),
             "theme": str(self.theme_input.currentData()),
+            "line_width": str(self.line_width_input.currentData()),
             "matlab": self.matlab_input.text().strip(),
         }
 
@@ -248,6 +262,7 @@ def open_settings(
     dialog = SettingsDialog(
         parent, binder, gui_language=gui_language, report_language=report_language,
         mode=theme_mode(settings), matlab=matlab_executable(settings),
+        width=line_width(settings),
     )
     try:
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -257,6 +272,7 @@ def open_settings(
         dialog.deleteLater()
     settings.setValue(MATLAB_KEY, values["matlab"])
     settings.setValue(THEME_KEY, values["theme"])
+    settings.setValue(LINE_WIDTH_KEY, int(values["line_width"]))
     application = QApplication.instance()
     if application is not None:
         app_theme.configure_appearance(application, values["theme"])

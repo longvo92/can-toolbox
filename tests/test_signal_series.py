@@ -97,3 +97,31 @@ def test_unknown_signal_or_message_raises(source):
         source.series(SignalRef(1, 0x100, "Engine", "Missing"))
     with pytest.raises(KeyError):
         source.series(SignalRef(1, 0x7FF, "Ghost", "X"))
+
+
+def test_change_times_and_cursor_jumps(source):
+    import numpy as np
+
+    from can_toolbox.canlog.signals import SignalSeries
+
+    rpm = source.series(SignalRef(1, 0x100, "Engine", "Rpm"))
+    changes = rpm.change_times()
+    assert changes[0] == rpm.time[0]
+    assert len(changes) > 1
+    # Every change is a sample where the held value differs from the one before.
+    for moment in changes[1:]:
+        index = int(np.searchsorted(rpm.time, moment))
+        assert rpm.values[index] != rpm.values[index - 1]
+
+    first, second = float(changes[0]), float(changes[1])
+    assert rpm.next_change(first - 1.0) == first
+    assert rpm.next_change(first) == second
+    assert rpm.next_change(second, forward=False) == first
+    assert rpm.next_change(first, forward=False) is None
+    assert rpm.next_change(float(changes[-1])) is None
+
+    steady = SignalSeries(ref=rpm.ref, time=np.array([0.0, 1.0, 2.0]), values=np.array([5.0, 5.0, 5.0]))
+    assert steady.change_times().tolist() == [0.0]
+    assert steady.next_change(0.0) is None
+    empty = SignalSeries(ref=rpm.ref, time=np.zeros(0), values=np.zeros(0))
+    assert not len(empty.change_times()) and empty.next_change(0.0) is None

@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 import pyqtgraph as pg
-from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QColor, QKeySequence, QShortcut
+from PySide6.QtCore import QMimeData, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QFontMetrics, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
+    QApplication,
+    QFileDialog,
     QHeaderView,
     QLabel,
-    QPushButton,
+    QMenu,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QToolBar,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -29,7 +34,11 @@ from can_toolbox.ui.widgets import TextBinder
 
 SIGNAL_MIME = "application/x-can-toolbox-signal"
 MAX_PLOTS = 16
-PLOT_HEIGHT = 110
+# One lane: tall enough to read the curve, short enough to stack a few on screen.
+PLOT_HEIGHT = 80
+AXIS_WIDTH = 72
+LINE_WIDTHS = (1, 2, 3, 4)
+DEFAULT_LINE_WIDTH = 2
 
 pg.setConfigOptions(antialias=False)
 
@@ -132,7 +141,7 @@ class GraphPanel(QWidget):
     signal_dropped = Signal(object)
     measuring_changed = Signal(bool)
 
-    def __init__(self, binder: TextBinder, parent=None) -> None:
+    def __init__(self, binder: TextBinder, parent=None, *, actions: Sequence[QAction] = ()) -> None:
         super().__init__(parent)
         self._binder = binder
         self.series: list = []  # SignalSeries
@@ -142,6 +151,7 @@ class GraphPanel(QWidget):
         self._syncing = False
         self._measuring = False
         self._visible_cursors = [True, False]
+        self._line_width = DEFAULT_LINE_WIDTH
         self._theme = app_theme.current_theme()
         app_theme.manager.changed.connect(self.apply_theme)
 
@@ -155,7 +165,6 @@ class GraphPanel(QWidget):
         binder.bind(self.placeholder.setText,
                     "Double-click or drag signals from the list to plot them.")
 
-        self.clear_button = binder.widget(QPushButton, "Clear Graph")
         self.readout = QTableWidget(0, 4)
         self.readout.verticalHeader().hide()
         self.readout.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -163,14 +172,9 @@ class GraphPanel(QWidget):
         header = self.readout.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.remove_button = binder.widget(QPushButton, "Remove Plot")
         self.delta_label = QLabel()
         self.delta_label.setObjectName("hintLabel")
-
-        tools = QHBoxLayout()
-        tools.addWidget(self.delta_label, 1)
-        tools.addWidget(self.remove_button)
-        tools.addWidget(self.clear_button)
+        self.toolbar = self._build_toolbar(actions)
 
         # Each plot keeps a readable height; many signals scroll instead of shrinking.
         self.scroll = QScrollArea()
@@ -195,14 +199,88 @@ class GraphPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(tools)
+        layout.setSpacing(0)
+        layout.addWidget(self.toolbar)
         layout.addWidget(splitter, 1)
 
-        self.clear_button.clicked.connect(self.clear)
-        self.remove_button.clicked.connect(self.remove_selected)
         QShortcut(QKeySequence.StandardKey.Delete, self.readout, activated=self.remove_selected)
         self._update_language()
         self._show_canvas()
+
+    # -- toolbar -------------------------------------------------------------------
+
+    def _action(self, key: str, icon: str, slot) -> QAction:
+        action = QAction(self)
+        self._binder.bind(action.setText, key)
+        self._binder.bind(action.setToolTip, key)
+        action.setProperty("iconName", icon)
+        action.setIcon(app_theme.icon(icon))
+        action.triggered.connect(slot)
+        return action
+
+    def _build_toolbar(self, actions: Sequence[QAction]) -> QToolBar:
+        """The graph's own strip: the window's fit/zoom/cursor actions plus ours."""
+        window_actions = {action.property("iconName"): action for action in actions}
+        toolbar = QToolBar(self)
+        toolbar.setObjectName("graphToolBar")
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        toolbar.setIconSize(QSize(16, 16))
+
+        fit = window_actions.get("fit")
+        if fit is not None:
+            self.fit_button = QToolButton(toolbar)
+            self.fit_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            self.fit_button.setDefaultAction(fit)
+            menu = QMenu(self.fit_button)
+            for name in ("fit", "fit-x", "fit-y"):
+                action = window_actions.get(name)
+                if action is not None:
+                    menu.addAction(action)
+            self.fit_button.setMenu(menu)
+            toolbar.addWidget(self.fit_button)
+        for name in ("zoom-in", "zoom-out"):
+            if (action := window_actions.get(name)) is not None:
+                toolbar.addAction(action)
+        toolbar.addSeparator()
+        for name in ("cursor-1", "cursor-2"):
+            if (action := window_actions.get(name)) is not None:
+                toolbar.addAction(action)
+        self.prev_change_action = self._action("Previous change", "prev-change",
+                                               lambda: self.jump_to_change(forward=False))
+        self.next_change_action = self._action("Next change", "next-change",
+                                               lambda: self.jump_to_change(forward=True))
+        toolbar.addAction(self.prev_change_action)
+        toolbar.addAction(self.next_change_action)
+        toolbar.addSeparator()
+        self.remove_action = self._action("Remove Plot", "remove-plot", self.remove_selected)
+        self.clear_action = self._action("Clear Graph", "clear-graph", self.clear)
+        toolbar.addAction(self.remove_action)
+        toolbar.addAction(self.clear_action)
+        toolbar.addSeparator()
+
+        self.save_image_action = self._action("Save Image…", "image", self.save_image)
+        self.copy_image_action = self._action("Copy Image", "image", self.copy_image)
+        self.image_button = QToolButton(toolbar)
+        self.image_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.image_button.setDefaultAction(self.save_image_action)
+        image_menu = QMenu(self.image_button)
+        image_menu.addAction(self.save_image_action)
+        image_menu.addAction(self.copy_image_action)
+        self.image_button.setMenu(image_menu)
+        toolbar.addWidget(self.image_button)
+
+        spacer = QWidget(toolbar)
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+        toolbar.addWidget(self.delta_label)
+        return toolbar
+
+    def _update_icons(self) -> None:
+        for action in self.findChildren(QAction):
+            name = action.property("iconName")
+            if name:
+                action.setIcon(app_theme.icon(str(name)))
 
     # -- public API ----------------------------------------------------------------
 
@@ -335,10 +413,57 @@ class GraphPanel(QWidget):
         self.set_cursor(first)
         self.measuring_changed.emit(measure)
 
+    def selected_series(self):
+        """The series whose row is selected, or the only one plotted."""
+        rows = sorted({index.row() for index in self.readout.selectedIndexes()})
+        if rows and rows[0] < len(self.series):
+            return self.series[rows[0]]
+        return self.series[0] if len(self.series) == 1 else None
+
+    def jump_to_change(self, *, forward: bool) -> bool:
+        """Move cursor 1 to the next or previous value change of the chosen signal."""
+        series = self.selected_series()
+        if series is None:
+            return False
+        target = series.next_change(self.cursor_time[0], forward=forward)
+        if target is None:
+            return False
+        self.set_cursor(target)
+        self.cursor_moved.emit(target)
+        return True
+
+    def image(self) -> QImage:
+        """The plots as they are on screen, at the canvas' own size."""
+        return self.canvas.grab().toImage()
+
+    def copy_image(self) -> None:
+        if self.series:
+            QApplication.clipboard().setImage(self.image())
+
+    def save_image(self) -> None:
+        if not self.series:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, self._binder.tr("Save Image…"), "graph.png",
+                                              self._binder.tr("PNG image (*.png)"))
+        if path:
+            self.image().save(path if path.lower().endswith(".png") else f"{path}.png", "PNG")
+
+    def line_width(self) -> int:
+        return self._line_width
+
+    def set_line_width(self, width: int) -> None:
+        """Curve thickness in pixels; applied to the plots right away."""
+        width = min(max(int(width), LINE_WIDTHS[0]), LINE_WIDTHS[-1])
+        if width == self._line_width:
+            return
+        self._line_width = width
+        self._rebuild()
+
     def apply_theme(self, theme) -> None:
         """Repaint the plots in ``theme``: background, axes, curves and cursors."""
         self._theme = theme
         self.canvas.setBackground(theme.plot_bg)
+        self._update_icons()
         self._rebuild()
 
     def set_languages(self) -> None:
@@ -356,8 +481,9 @@ class GraphPanel(QWidget):
         self.placeholder.setVisible(empty)
         self.scroll.setVisible(not empty)
         self.canvas.setMinimumHeight(PLOT_HEIGHT * len(self.series) + 30)
-        for widget in (self.clear_button, self.remove_button):
-            widget.setEnabled(not empty)
+        for action in (self.clear_action, self.remove_action, self.prev_change_action,
+                       self.next_change_action, self.save_image_action, self.copy_image_action):
+            action.setEnabled(not empty)
 
     def _rebuild(self) -> None:
         self.canvas.clear()
@@ -370,20 +496,27 @@ class GraphPanel(QWidget):
             plot = self.canvas.addPlot(row=index, col=0)
             plot.showGrid(x=True, y=True, alpha=theme.grid_alpha)
             plot.setMenuEnabled(False)
-            plot.getAxis("left").setWidth(64)
             plot.hideButtons()
+            # No title row: the lane is short, so the signal names the left axis.
+            plot.setContentsMargins(0, 0, 0, 0)
+            plot.layout.setContentsMargins(0, 0, 0, 0)
+            left = plot.getAxis("left")
+            left.setWidth(AXIS_WIDTH)
             for edge in ("left", "bottom"):
                 axis = plot.getAxis(edge)
                 axis.setTextPen(theme.plot_fg)
                 axis.setPen(theme.plot_fg)
-            if series.unit:
-                plot.setTitle(f"<span style='color:{color}'>{series.ref.signal} [{series.unit}]</span>", size="8pt")
-            else:
-                plot.setTitle(f"<span style='color:{color}'>{series.ref.signal}</span>", size="8pt")
+            self._label_lane(plot, series, color)
+            if index:
+                # A rule between lanes: stacked plots otherwise read as one grid.
+                top = plot.getAxis("top")
+                top.setPen(pg.mkPen(theme.grid_line, width=1))
+                top.setStyle(showValues=False, tickLength=0)
+                plot.showAxis("top")
             if len(series.time):
                 # Sample-and-hold: each value lasts until the next sample.
                 curve = pg.PlotDataItem(series.time, series.values, stepMode="right",
-                                        pen=pg.mkPen(color, width=1.2))
+                                        pen=pg.mkPen(color, width=self._line_width))
                 # Clip and downsample only once the curve sits in its view box.
                 plot.addItem(curve)
                 curve.setClipToView(True)
@@ -407,6 +540,21 @@ class GraphPanel(QWidget):
             self._plots.append(plot)
         self._fill_readout()
         self._show_canvas()
+
+    def _label_lane(self, plot, series, color: str) -> None:
+        """Name the lane on its left axis, elided to the height it has.
+
+        pyqtgraph rotates the left label by -90°, so the room for it is the
+        lane height, not its width.
+        """
+        axis = plot.getAxis("left")
+        metrics = QFontMetrics(axis.label.font())
+        name = series.ref.signal
+        text = metrics.elidedText(name, Qt.TextElideMode.ElideRight, PLOT_HEIGHT - 12)
+        axis.setLabel(text, color=color)
+        tooltip = f"{series.ref.label} [{series.unit}]" if series.unit else series.ref.label
+        axis.setToolTip(tooltip)
+        axis.label.setToolTip(tooltip)
 
     def _cursor_dragged(self, cursor: int, line) -> None:
         if self._syncing:
