@@ -4,16 +4,17 @@
 
 [longvo92/can-toolbox](https://github.com/longvo92/can-toolbox)
 
-CAN Toolbox brings two everyday CAN tasks into one window: reviewing DBC changes before an integration, and turning recorded BLF logs into MATLAB data for models and test harnesses.
+CAN Toolbox reads CAN logs like a trace and turns them into the files the next step needs: a cut log, MATLAB data for a model, or an Excel report of what changed between two DBC baselines.
 
 ## What you can do
 
 - **Compare DBC files or folders.** Review added, removed, modified and renamed messages and signals, with OLD and NEW values for CAN ID, signal layout, scaling and ECU Tx/Rx routing.
 - **Focus on selected ECUs.** Limit the report to changes on chosen nodes, and pair ECU nodes that were renamed.
 - **Share an Excel report.** Change totals, message and signal details, and warnings when a folder comparison skips unreadable files.
-- **Convert BLF logs.** Export raw CAN frames, decode signals with DBC files, map them to model interfaces from Excel, TXT or YAML, and write MAT files or Simulink Signal Editor Datasets.
+- **Read and plot logs.** Open BLF, ASC and MF4 logs as a trace decoded with your DBCs, plot signals with two measurement cursors, and keep the setup as a workspace.
+- **Export once, in every format you need.** Cut by time, cursors or the trace filter and write BLF, ASC, MF4, CSV, MAT frames, MAT signals or a Simulink Dataset from the same cut.
 
-The interface and the Excel report can each use English or Vietnamese.
+The interface and the Excel report can each use English or Vietnamese, in a light or dark theme.
 
 ## Downloads and feedback
 
