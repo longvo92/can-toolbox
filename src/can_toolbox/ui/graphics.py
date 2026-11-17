@@ -9,7 +9,6 @@ from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -131,6 +130,7 @@ class GraphPanel(QWidget):
 
     cursor_moved = Signal(float)
     signal_dropped = Signal(object)
+    measuring_changed = Signal(bool)
 
     def __init__(self, binder: TextBinder, parent=None) -> None:
         super().__init__(parent)
@@ -140,6 +140,8 @@ class GraphPanel(QWidget):
         self._cursors: list[list[pg.InfiniteLine]] = [[], []]
         self.cursor_time = [0.0, 0.0]
         self._syncing = False
+        self._measuring = False
+        self._visible_cursors = [True, False]
         self._theme = app_theme.current_theme()
         app_theme.manager.changed.connect(self.apply_theme)
 
@@ -153,10 +155,7 @@ class GraphPanel(QWidget):
         binder.bind(self.placeholder.setText,
                     "Double-click or drag signals from the list to plot them.")
 
-        self.fit_button = binder.widget(QPushButton, "Fit")
         self.clear_button = binder.widget(QPushButton, "Clear Graph")
-        self.measure_input = QCheckBox()
-        binder.bind(self.measure_input.setText, "Measure (2 cursors)")
         self.readout = QTableWidget(0, 4)
         self.readout.verticalHeader().hide()
         self.readout.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -169,9 +168,7 @@ class GraphPanel(QWidget):
         self.delta_label.setObjectName("hintLabel")
 
         tools = QHBoxLayout()
-        tools.addWidget(self.fit_button)
-        tools.addWidget(self.measure_input)
-        tools.addStretch()
+        tools.addWidget(self.delta_label, 1)
         tools.addWidget(self.remove_button)
         tools.addWidget(self.clear_button)
 
@@ -189,7 +186,6 @@ class GraphPanel(QWidget):
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(0, 0, 0, 0)
         side_layout.addWidget(self.readout, 1)
-        side_layout.addWidget(self.delta_label)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(plots)
         splitter.addWidget(side)
@@ -202,10 +198,8 @@ class GraphPanel(QWidget):
         layout.addLayout(tools)
         layout.addWidget(splitter, 1)
 
-        self.fit_button.clicked.connect(self.fit)
         self.clear_button.clicked.connect(self.clear)
         self.remove_button.clicked.connect(self.remove_selected)
-        self.measure_input.toggled.connect(self._toggle_measure)
         QShortcut(QKeySequence.StandardKey.Delete, self.readout, activated=self.remove_selected)
         self._update_language()
         self._show_canvas()
@@ -234,10 +228,90 @@ class GraphPanel(QWidget):
         self.series = []
         self._rebuild()
 
-    def fit(self) -> None:
-        for plot in self._plots:
-            plot.enableAutoRange()
-            plot.autoRange()
+    @property
+    def measuring(self) -> bool:
+        """Whether the second cursor is shown, which is what measuring means here."""
+        return self._measuring
+
+    def set_measuring(self, enabled: bool) -> None:
+        if enabled == self._measuring:
+            return
+        self._measuring = enabled
+        self._visible_cursors[1] = enabled
+        if enabled and self._plots:
+            low, high = self._plots[0].viewRange()[0]
+            if not low <= self.cursor_time[1] <= high:
+                self.cursor_time[1] = self.cursor_time[0] + (high - low) / 10
+        for line in self._cursors[1]:
+            line.setValue(self.cursor_time[1])
+            line.setVisible(enabled)
+        self._update_readout()
+        self.measuring_changed.emit(enabled)
+
+    def set_cursor_visible(self, cursor: int, visible: bool) -> None:
+        """Hide a cursor line without forgetting where it is."""
+        if cursor == 1:
+            self.set_measuring(visible)
+            return
+        self._visible_cursors[cursor] = visible
+        for line in self._cursors[cursor]:
+            line.setVisible(visible)
+
+    def x_range(self) -> tuple[float, float]:
+        if not self._plots:
+            return (0.0, 0.0)
+        low, high = self._plots[0].viewRange()[0]
+        return (float(low), float(high))
+
+    def fit_x(self, duration: float) -> None:
+        """Show the whole log on the time axis, whatever the plotted signals cover."""
+        if not self._plots or duration <= 0:
+            return
+        self._plots[0].setXRange(0.0, duration, padding=0.02)
+
+    def fit_y(self) -> None:
+        """Autoscale every plot over the time range on screen, sample-and-hold included."""
+        import numpy as np
+
+        low, high = self.x_range()
+        if low == high:
+            return
+        for plot, series in zip(self._plots, self.series):
+            times, values = series.time, series.values
+            if not len(times):
+                continue
+            # The sample before the window is still on screen: it is held until the next one.
+            start = max(int(np.searchsorted(times, low, side="right")) - 1, 0)
+            stop = max(int(np.searchsorted(times, high, side="right")), start + 1)
+            window = values[start:stop]
+            if not len(window):
+                continue
+            bottom, top = float(np.min(window)), float(np.max(window))
+            if bottom == top:
+                margin = abs(bottom) * 0.1 or 0.5
+                bottom, top = bottom - margin, top + margin
+            plot.setYRange(bottom, top, padding=0.05)
+
+    def fit(self, duration: float = 0.0) -> None:
+        """Fit X then Y; without a duration the plotted signals decide the time axis."""
+        if duration > 0:
+            self.fit_x(duration)
+        else:
+            for plot in self._plots:
+                plot.enableAutoRange(axis="x")
+                plot.autoRange()
+        self.fit_y()
+
+    def zoom(self, factor: float) -> None:
+        """Zoom the time axis around the main cursor, which stays where it is."""
+        if not self._plots or factor <= 0:
+            return
+        low, high = self.x_range()
+        span = (high - low) / factor
+        centre = self.cursor_time[0]
+        if not low <= centre <= high:
+            centre = (low + high) / 2
+        self._plots[0].setXRange(centre - span / 2, centre + span / 2, padding=0)
 
     def set_cursor(self, seconds: float) -> None:
         """Move the main cursor without echoing :attr:`cursor_moved`."""
@@ -252,12 +326,14 @@ class GraphPanel(QWidget):
 
     def restore_cursors(self, first: float, second: float, measure: bool) -> None:
         """Put both cursors and the measure mode back, e.g. from a workspace."""
-        self.measure_input.setChecked(measure)
+        self._measuring = measure
+        self._visible_cursors[1] = measure
         self.cursor_time[1] = second
         for line in self._cursors[1]:
             line.setValue(second)
             line.setVisible(measure)
         self.set_cursor(first)
+        self.measuring_changed.emit(measure)
 
     def apply_theme(self, theme) -> None:
         """Repaint the plots in ``theme``: background, axes, curves and cursors."""
@@ -280,7 +356,7 @@ class GraphPanel(QWidget):
         self.placeholder.setVisible(empty)
         self.scroll.setVisible(not empty)
         self.canvas.setMinimumHeight(PLOT_HEIGHT * len(self.series) + 30)
-        for widget in (self.fit_button, self.clear_button, self.remove_button, self.measure_input):
+        for widget in (self.clear_button, self.remove_button):
             widget.setEnabled(not empty)
 
     def _rebuild(self) -> None:
@@ -324,7 +400,7 @@ class GraphPanel(QWidget):
                 line = pg.InfiniteLine(
                     pos=self.cursor_time[cursor], angle=90, movable=True, pen=pg.mkPen(color_line, width=1),
                 )
-                line.setVisible(cursor == 0 or self.measure_input.isChecked())
+                line.setVisible(self._visible_cursors[cursor])
                 line.sigPositionChanged.connect(lambda moved, c=cursor: self._cursor_dragged(c, moved))
                 plot.addItem(line, ignoreBounds=True)
                 self._cursors[cursor].append(line)
@@ -348,16 +424,6 @@ class GraphPanel(QWidget):
         if cursor == 0:
             self.cursor_moved.emit(seconds)
 
-    def _toggle_measure(self, enabled: bool) -> None:
-        if enabled and self._plots:
-            low, high = self._plots[0].viewRange()[0]
-            if not low <= self.cursor_time[1] <= high:
-                self.cursor_time[1] = self.cursor_time[0] + (high - low) / 10
-        for line in self._cursors[1]:
-            line.setValue(self.cursor_time[1])
-            line.setVisible(enabled)
-        self._update_readout()
-
     def _fill_readout(self) -> None:
         self.readout.setRowCount(len(self.series))
         for row, series in enumerate(self.series):
@@ -368,7 +434,7 @@ class GraphPanel(QWidget):
         self._update_readout()
 
     def _update_readout(self) -> None:
-        measuring = self.measure_input.isChecked()
+        measuring = self._measuring
         first, second = self.cursor_time
         for row, series in enumerate(self.series):
             values = [series.text_at(first), series.text_at(second) if measuring else ""]

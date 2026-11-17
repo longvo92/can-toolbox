@@ -6,7 +6,7 @@ import datetime
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtCore import QSettings, QSize, Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QProgressBar,
     QPushButton,
-    QTabWidget,
     QToolBar,
     QToolButton,
     QTreeWidgetItem,
@@ -44,12 +43,14 @@ from can_toolbox.ui.logview.panels import (
 )
 from can_toolbox.ui.logview.tasks import Task, load_view
 from can_toolbox.ui.logview.trace import COLUMNS, TraceModel, number_text
+from can_toolbox.ui.theme import icon as themed_icon
+from can_toolbox.ui.theme import manager as theme_manager
 from can_toolbox.ui.widgets import TextBinder
 
 SETTINGS_PREFIX = "logview/"
-STATE_VERSION = 1
+STATE_VERSION = 2
 BROWSER_WIDTH = 260
-DETAIL_TABS = ("Signal Values", "Statistics", "Log Info")
+ZOOM_STEP = 1.6
 
 
 class LogViewerWindow(QMainWindow):
@@ -115,9 +116,6 @@ class LogViewerWindow(QMainWindow):
         self.signal_values = build_signal_values()
         self.statistics = build_statistics_table()
         self.info = build_info_view()
-        self.details = QTabWidget()
-        for widget in (self.signal_values, self.statistics, self.info):
-            self.details.addTab(widget, "")
         self.graph = GraphPanel(self._binder)
         self.signal_browser = SignalBrowser(self._binder)
         self.filters = FilterBar(self._binder)
@@ -127,20 +125,47 @@ class LogViewerWindow(QMainWindow):
         self.setCentralWidget(self.graph)
 
     def _build_actions(self) -> None:
-        self.open_action = self._action("Open Log…", "Ctrl+O")
-        self.reload_action = self._action("Reload", "F5")
-        self.dbc_action = self._action("DBC Files…")
-        self.export_action = self._action("Export…", "Ctrl+E")
+        self.open_action = self._action("Open Log…", "Ctrl+O", icon="open")
+        self.reload_action = self._action("Reload", "F5", icon="reload")
+        self.dbc_action = self._action("DBC Files…", icon="dbc")
+        self.export_action = self._action("Export…", "Ctrl+E", icon="export")
         self.open_workspace_action = self._action("Open Workspace…")
         self.save_workspace_action = self._action("Save Workspace…", "Ctrl+S")
         self.quit_action = self._action("Quit", "Ctrl+Q")
+        self.fit_action = self._action("Fit", "Ctrl+0", icon="fit")
+        self.fit_x_action = self._action("Fit X", "Ctrl+Shift+X", icon="fit-x")
+        self.fit_y_action = self._action("Fit Y", "Ctrl+Shift+Y", icon="fit-y")
+        self.zoom_in_action = self._action("Zoom In", "Ctrl++", icon="zoom-in")
+        self.zoom_out_action = self._action("Zoom Out", "Ctrl+-", icon="zoom-out")
+        self.cursor1_action = self._action("Cursor 1", icon="cursor-1", checkable=True)
+        self.cursor1_action.setChecked(True)
+        self.cursor2_action = self._action("Cursor 2", icon="cursor-2", checkable=True)
+        self.statistics_action = self._action("Statistics", icon="statistics")
+        self.info_action = self._action("Log Info", icon="info")
+        self.signal_search_action = self._action("Signal search…", icon="search")
+        self.signal_values_action = self._action("Signal Values")
+        self.graph_actions = (self.fit_action, self.fit_x_action, self.fit_y_action,
+                              self.zoom_in_action, self.zoom_out_action,
+                              self.cursor1_action, self.cursor2_action)
 
-    def _action(self, key: str, shortcut: str = "") -> QAction:
+    def _action(self, key: str, shortcut: str = "", *, icon: str = "", checkable: bool = False) -> QAction:
         action = QAction(self)
         self._binder.bind(action.setText, key)
+        self._binder.bind(action.setToolTip, key)
         if shortcut:
             action.setShortcut(shortcut)
+        if icon:
+            action.setProperty("iconName", icon)
+            action.setIcon(themed_icon(icon))
+        action.setCheckable(checkable)
         return action
+
+    def _update_icons(self) -> None:
+        """Re-tint every toolbar icon after a theme change."""
+        for action in self.findChildren(QAction):
+            name = action.property("iconName")
+            if name:
+                action.setIcon(themed_icon(str(name)))
 
     def _dock(self, key: str, widget: QWidget, area, object_name: str) -> QDockWidget:
         dock = QDockWidget(self)
@@ -160,9 +185,18 @@ class LogViewerWindow(QMainWindow):
         self.browser_dock = self._dock("Signal Browser", self.signal_browser,
                                        Qt.DockWidgetArea.LeftDockWidgetArea, "signalBrowserDock")
         self.trace_dock = self._dock("Trace", self.trace, Qt.DockWidgetArea.BottomDockWidgetArea, "traceDock")
-        self.details_dock = self._dock("Details", self.details, Qt.DockWidgetArea.BottomDockWidgetArea,
-                                       "detailsDock")
-        self.splitDockWidget(self.trace_dock, self.details_dock, Qt.Orientation.Horizontal)
+        self.values_dock = self._dock("Signal Values", self.signal_values,
+                                      Qt.DockWidgetArea.BottomDockWidgetArea, "signalValuesDock")
+        self.statistics_dock = self._dock("Statistics", self.statistics,
+                                          Qt.DockWidgetArea.BottomDockWidgetArea, "statisticsDock")
+        self.info_dock = self._dock("Log Info", self.info, Qt.DockWidgetArea.BottomDockWidgetArea, "logInfoDock")
+        for dock in (self.values_dock, self.statistics_dock, self.info_dock):
+            self.splitDockWidget(self.trace_dock, dock, Qt.Orientation.Horizontal)
+        # A minimal first screen: toolbar, Graphics and Trace. Everything else is
+        # one click away in View, or from the trace's own context menu.
+        self.panel_docks = (self.values_dock, self.statistics_dock, self.info_dock)
+        for dock in (*self.panel_docks, self.browser_dock):
+            dock.hide()
         self._apply_default_dock_sizes()
 
     def _apply_default_dock_sizes(self) -> None:
@@ -173,17 +207,18 @@ class LogViewerWindow(QMainWindow):
         """
         # resizeDocks accepts docks of one area at a time.
         self.resizeDocks([self.browser_dock], [BROWSER_WIDTH], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.trace_dock, self.details_dock], [660, 340], Qt.Orientation.Horizontal)
-        self.resizeDocks([self.trace_dock, self.details_dock], [320, 320], Qt.Orientation.Vertical)
+        self.resizeDocks([self.trace_dock, *self.panel_docks], [660, 340, 340, 340],
+                         Qt.Orientation.Horizontal)
+        self.resizeDocks([self.trace_dock], [320], Qt.Orientation.Vertical)
 
     def _build_toolbars(self) -> None:
         self.toolbar = QToolBar(self)
         self.toolbar.setObjectName("mainToolBar")
         self._binder.bind(self.toolbar.setWindowTitle, "Main toolbar")
-        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.toolbar.setIconSize(QSize(20, 20))
         for action in (self.open_action, self.reload_action, self.dbc_action, self.export_action):
             self.toolbar.addAction(action)
-        self.toolbar.addSeparator()
         self.workspace_button = QToolButton(self.toolbar)
         self.workspace_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._binder.bind(self.workspace_button.setText, "Workspace")
@@ -192,6 +227,13 @@ class LogViewerWindow(QMainWindow):
         workspace_menu.addAction(self.save_workspace_action)
         self.workspace_button.setMenu(workspace_menu)
         self.toolbar.addWidget(self.workspace_button)
+        self.toolbar.addSeparator()
+        for action in (self.fit_action, self.fit_x_action, self.fit_y_action,
+                       self.zoom_in_action, self.zoom_out_action):
+            self.toolbar.addAction(action)
+        self.toolbar.addSeparator()
+        for action in (self.cursor1_action, self.cursor2_action):
+            self.toolbar.addAction(action)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
         self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
@@ -200,6 +242,7 @@ class LogViewerWindow(QMainWindow):
         self._binder.bind(self.filter_toolbar.setWindowTitle, "Filter bar")
         self.filter_toolbar.addWidget(self.filters)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.filter_toolbar)
+        self.filter_toolbar.hide()
 
     def _build_status_bar(self) -> None:
         self.status_label = QLabel()
@@ -238,9 +281,13 @@ class LogViewerWindow(QMainWindow):
         self.view_menu = self.menuBar().addMenu("")
         self._binder.bind(self.view_menu.setTitle, "View")
         for dock, key in ((self.trace_dock, "Trace"), (self.browser_dock, "Signal Browser"),
-                          (self.details_dock, "Details")):
+                          (self.values_dock, "Signal Values"), (self.statistics_dock, "Statistics"),
+                          (self.info_dock, "Log Info")):
             action = dock.toggleViewAction()
             self._binder.bind(action.setText, key)
+            self.view_menu.addAction(action)
+        self.view_menu.addSeparator()
+        for action in self.graph_actions:
             self.view_menu.addAction(action)
         self.view_menu.addSeparator()
         for bar, key in ((self.toolbar, "Main toolbar"), (self.filter_toolbar, "Filter bar")):
@@ -268,11 +315,25 @@ class LogViewerWindow(QMainWindow):
         self.filters.find_requested.connect(self._find)
         self.trace.selectionModel().currentRowChanged.connect(self._show_signals)
         self.trace.selectionModel().currentRowChanged.connect(self._trace_moved)
-        self.details.currentChanged.connect(lambda _: self._refresh_statistics())
+        self.trace.customContextMenuRequested.connect(self._show_trace_menu)
+        self.statistics_dock.visibilityChanged.connect(lambda _visible: self._refresh_statistics())
         self.signal_browser.plot_requested.connect(self.plot_signal)
         self.signal_browser.add_selected.connect(self._plot_selected)
         self.graph.signal_dropped.connect(self.plot_signal)
         self.graph.cursor_moved.connect(self._cursor_moved)
+        self.graph.measuring_changed.connect(self._measuring_changed)
+        self.fit_action.triggered.connect(lambda: self.graph.fit(self.duration()))
+        self.fit_x_action.triggered.connect(lambda: self.graph.fit_x(self.duration()))
+        self.fit_y_action.triggered.connect(self.graph.fit_y)
+        self.zoom_in_action.triggered.connect(lambda: self.graph.zoom(ZOOM_STEP))
+        self.zoom_out_action.triggered.connect(lambda: self.graph.zoom(1 / ZOOM_STEP))
+        self.cursor1_action.toggled.connect(lambda shown: self.graph.set_cursor_visible(0, shown))
+        self.cursor2_action.toggled.connect(self.graph.set_measuring)
+        self.statistics_action.triggered.connect(lambda: self.open_panel(self.statistics_dock))
+        self.info_action.triggered.connect(lambda: self.open_panel(self.info_dock))
+        self.signal_values_action.triggered.connect(lambda: self.open_panel(self.values_dock))
+        self.signal_search_action.triggered.connect(self._open_signal_search)
+        theme_manager.changed.connect(lambda _theme: self._update_icons())
 
     # -- language ------------------------------------------------------------------
 
@@ -295,8 +356,6 @@ class LogViewerWindow(QMainWindow):
         self.model.headerDataChanged.emit(Qt.Orientation.Horizontal, 0, len(COLUMNS) - 1)
         self.signal_values.setHeaderLabels([tr(column) for column in SIGNAL_VALUE_COLUMNS])
         self.statistics.setHorizontalHeaderLabels([tr(column) for column in STATISTICS_COLUMNS])
-        for index, key in enumerate(DETAIL_TABS):
-            self.details.setTabText(index, tr(key))
         self._update_file_label()
         self.graph.set_languages()
         key, parameters = self._status
@@ -341,6 +400,11 @@ class LogViewerWindow(QMainWindow):
         self.workspace_button.setEnabled(not busy)
         self.filters.set_controls_enabled(loaded and not busy)
         self.signal_browser.set_controls_enabled(loaded and not busy)
+        for action in self.graph_actions:
+            action.setEnabled(loaded and not busy)
+        for action in (self.statistics_action, self.info_action, self.signal_values_action,
+                       self.signal_search_action):
+            action.setEnabled(loaded and not busy)
 
     def _load_assignments(self) -> list[tuple[str, int]]:
         raw = self._settings.value(SETTINGS_PREFIX + "dbc_assignments", "[]", type=str)
@@ -370,6 +434,72 @@ class LogViewerWindow(QMainWindow):
     def _save_window_state(self) -> None:
         self._settings.setValue("window/geometry", self.saveGeometry())
         self._settings.setValue("window/state", self.saveState(STATE_VERSION))
+
+    def open_panel(self, dock: QDockWidget) -> QDockWidget:
+        """Statistics, Log Info and Signal Values open as their own window.
+
+        A panel the user has docked stays docked; only a hidden one floats.
+        """
+        if dock.isHidden():
+            dock.setFloating(True)
+            dock.resize(640, 360)
+            dock.move(self.geometry().center() - dock.rect().center())
+            dock.show()
+        dock.raise_()
+        dock.activateWindow()
+        return dock
+
+    def _open_signal_search(self) -> None:
+        self.open_panel(self.browser_dock)
+        self.signal_browser.search_input.setFocus()
+
+    def _show_trace_menu(self, point) -> None:
+        index = self.trace.indexAt(point)
+        menu = QMenu(self)
+        tr = self._tr
+        plot_action = menu.addAction(tr("Plot signals of this message"))
+        cursor_action = menu.addAction(tr("Set cursor here"))
+        plot_action.setEnabled(index.isValid() and self.source is not None)
+        cursor_action.setEnabled(index.isValid())
+        menu.addSeparator()
+        for action in (self.signal_values_action, self.statistics_action, self.info_action,
+                       self.signal_search_action):
+            menu.addAction(action)
+        chosen = menu.exec(self.trace.viewport().mapToGlobal(point))
+        if chosen is plot_action:
+            self._plot_message(index)
+        elif chosen is cursor_action:
+            self.trace.setCurrentIndex(index)
+
+    def _plot_message(self, index) -> None:
+        """Plot every signal of the message under the cursor, as CANoe's trace does."""
+        from can_toolbox.canlog.decode import frame_keys
+        from can_toolbox.canlog.refs import SignalRef
+
+        if self.source is None or not index.isValid():
+            return
+        row = self.model.frame_row(index.row())
+        frames = self.view.frames
+        key = int(frame_keys(frames.take([row]))[0])
+        channel = int(frames.channel[row])
+        for entry in self.source.catalog():
+            if entry.key == key and entry.channel == channel:
+                for name in entry.signals:
+                    self.plot_signal(SignalRef(channel, key, entry.message, name), quiet=True)
+                return
+        self._set_status("No DBC message for this frame.")
+
+    def duration(self) -> float:
+        """Seconds from the first frame to the last, 0 without a log."""
+        view = self.view
+        if view is None or not len(view.order):
+            return 0.0
+        return (int(view.frames.time_ns[view.order[-1]]) - view.origin_ns) / 1e9
+
+    def _measuring_changed(self, enabled: bool) -> None:
+        self.cursor2_action.blockSignals(True)
+        self.cursor2_action.setChecked(enabled)
+        self.cursor2_action.blockSignals(False)
 
     # -- loading -------------------------------------------------------------------
 
@@ -410,8 +540,7 @@ class LogViewerWindow(QMainWindow):
     def _on_loaded(self, view) -> None:
         self.view = view
         frames = view.frames
-        duration = (int(frames.time_ns[view.order[-1]]) - view.origin_ns) / 1e9 if len(frames) else 0.0
-        self._loaded_summary = {"count": f"{len(frames):,}", "duration": f"{duration:.3f}"}
+        self._loaded_summary = {"count": f"{len(frames):,}", "duration": f"{self.duration():.3f}"}
         self._populate_channels()
         self._stats_dirty = True
         self._apply_filter()
@@ -421,7 +550,7 @@ class LogViewerWindow(QMainWindow):
             workspace, self._pending_workspace = self._pending_workspace, None
             self._apply_workspace(workspace)
         if view.log.warnings or view.database.errors:
-            self.details.setCurrentWidget(self.info)
+            self.open_panel(self.info_dock)
 
     def _on_failed(self, message: str) -> None:
         self._pending_workspace = None
@@ -488,8 +617,8 @@ class LogViewerWindow(QMainWindow):
         if self.view is None or self.is_busy():
             return
         view = self.view
-        duration = (int(view.frames.time_ns[view.order[-1]]) - view.origin_ns) / 1e9 if len(view.order) else 0.0
-        cursors = tuple(self.graph.cursor_time) if self.graph.measure_input.isChecked() and self.graph.series else None
+        duration = self.duration()
+        cursors = tuple(self.graph.cursor_time) if self.graph.measuring and self.graph.series else None
         log_path = Path(self.log_path)
         default = self._settings.value(SETTINGS_PREFIX + "last_export", "", type=str)
         default = str(Path(default).parent / f"{log_path.stem}_cut{Path(default).suffix}") if default else \
@@ -545,7 +674,7 @@ class LogViewerWindow(QMainWindow):
             time=self.filters.time_mode(),
             signals=tuple(self.graph.refs()),
             cursors=tuple(self.graph.cursor_time),
-            measure=self.graph.measure_input.isChecked(),
+            measure=self.graph.measuring,
         )
 
     def _save_workspace_as(self) -> None:
@@ -676,7 +805,7 @@ class LogViewerWindow(QMainWindow):
             self.signal_values.resizeColumnToContents(column)
 
     def _refresh_statistics(self) -> None:
-        if self.view is None or not self._stats_dirty or self.details.currentWidget() is not self.statistics:
+        if self.view is None or not self._stats_dirty or not self.statistics_dock.isVisible():
             return
         if self.stats_worker and self.stats_worker.isRunning():
             old = self.stats_worker
