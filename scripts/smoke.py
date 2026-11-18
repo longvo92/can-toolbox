@@ -138,6 +138,24 @@ def stage_logview(workdir: Path) -> None:
             raise AssertionError(f"{path.name}: cut kept {cut.frames} frames")
         print(f"logview/{suffix[1:]}: {len(view.frames)} frames, {len(rows)} Sample, cut {cut.frames}")
 
+    # The formats with no writer of their own: a CSV cut must open again, and a PEAK trace
+    # has to come back through python-can.
+    csv_cut = export_log(view, ExportRequest(), root / "capture.csv")
+    reopened = open_log(csv_cut.path)
+    if reopened.format != "CSV" or len(reopened.frames) != 20:
+        raise AssertionError(f"capture.csv: {reopened.format}, {len(reopened.frames)} frames")
+    trc = root / "capture.trc"
+    with can.TRCWriter(str(trc)) as writer:
+        for index in range(20):
+            writer.on_message_received(can.Message(
+                timestamp=1_700_000_000 + index * 0.01, arbitration_id=256,
+                is_extended_id=False, data=bytes([index, 0]), channel=1,
+            ))
+    trace = open_log(trc)
+    if trace.format != "TRC" or len(trace.frames) != 20:
+        raise AssertionError(f"capture.trc: {trace.format}, {len(trace.frames)} frames")
+    print(f"logview/csv+trc: {len(reopened.frames)} and {len(trace.frames)} frames reopened")
+
 
 def stage_gui(_workdir: Path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

@@ -19,8 +19,11 @@ from PySide6.QtWidgets import (
 
 from can_toolbox.ui.widgets import NoWheelComboBox, TextBinder, dialog_buttons
 
-LOG_FILTER = "CAN logs (*.blf *.asc *.mf4);;BLF (*.blf);;ASC (*.asc);;MDF4 (*.mf4)"
-LOG_SUFFIXES = (".blf", ".asc", ".mf4")
+LOG_FILTER = (
+    "CAN logs (*.blf *.asc *.mf4 *.trc *.log *.csv);;BLF (*.blf);;ASC (*.asc);;MDF4 (*.mf4);;"
+    "PEAK trace (*.trc);;candump log (*.log);;CSV (*.csv)"
+)
+LOG_SUFFIXES = (".blf", ".asc", ".mf4", ".trc", ".log", ".csv")
 WORKSPACE_FILTER = "CAN Toolbox workspace (*.cantoolbox.json)"
 MAX_CHANNEL_CHOICES = 16
 
