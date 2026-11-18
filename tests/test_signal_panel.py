@@ -116,17 +116,57 @@ def test_values_follow_the_cursors_and_the_visible_range(panel, signals):
     panel.set_range(0.0, 3.0)
     panel.set_cursors(1.0, 2.5, False)
     index = panel.model.index_of(entry)
-    assert panel.model.data(index.siblingAtColumn(1)) == "20 rpm"
-    assert panel.model.data(index.siblingAtColumn(2)) == ""  # cursor 2 is off
-    assert (panel.model.data(index.siblingAtColumn(3)), panel.model.data(index.siblingAtColumn(4))) == ("5", "30")
-    assert panel.view.isColumnHidden(2) and panel.view.isColumnHidden(5)
+    assert panel.model.data(index.siblingAtColumn(1)) == "20 rpm"  # Value
+    assert panel.model.data(index.siblingAtColumn(2)) == "20"  # y, the bare number
+    assert panel.model.data(index.siblingAtColumn(3)) == ""  # Value2: cursor 2 is off
+    assert (panel.model.data(index.siblingAtColumn(4)), panel.model.data(index.siblingAtColumn(5))) == ("5", "30")
+    assert panel.view.isColumnHidden(3) and panel.view.isColumnHidden(6)
 
     panel.set_cursors(1.0, 2.5, True)
-    assert panel.model.data(index.siblingAtColumn(2)) == "5 rpm"
-    assert panel.model.data(index.siblingAtColumn(5)) == "-15"
+    assert panel.model.data(index.siblingAtColumn(3)) == "5 rpm"
+    assert panel.model.data(index.siblingAtColumn(6)) == "-15"
     # Measuring narrows min/max to the span between the cursors.
-    assert (panel.model.data(index.siblingAtColumn(3)), panel.model.data(index.siblingAtColumn(4))) == ("5", "20")
-    assert not panel.view.isColumnHidden(2) and not panel.view.isColumnHidden(5)
+    assert (panel.model.data(index.siblingAtColumn(4)), panel.model.data(index.siblingAtColumn(5))) == ("5", "20")
+    assert not panel.view.isColumnHidden(3) and not panel.view.isColumnHidden(6)
+
+
+def test_a_named_value_reads_as_its_name_and_y_carries_the_number(panel, signals):
+    entry = signals.add(GEAR)
+    series = SignalSeries(ref=GEAR, time=np.array([0.0]), values=np.array([1.0]), choices={1: "Drive"})
+    panel.set_series_lookup(lambda ref: series if ref == GEAR else None)
+    panel.set_cursors(0.5, 0.0, False)
+    index = panel.model.index_of(entry)
+    assert panel.model.data(index.siblingAtColumn(1)) == "Drive"
+    assert panel.model.data(index.siblingAtColumn(2)) == "1"
+
+
+def test_ctrl_clicking_a_second_signal_adds_it_to_the_plot(panel, signals):
+    """Resetting the model clears the view's selection silently; it must come back."""
+    from PySide6.QtCore import QItemSelectionModel
+
+    first = signals.add(RPM)
+    second = signals.add(GEAR)
+    panel.set_plot_mode(True)
+
+    def ctrl_click(entry):
+        index = panel.model.index_of(entry)
+        panel.view.selectionModel().select(
+            index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+
+    ctrl_click(first)
+    assert signals.visible_entries() == [first]
+    ctrl_click(second)
+    assert signals.visible_entries() == [first, second]
+    assert panel.selected_entries() == [first, second]
+
+
+def test_a_rebuild_keeps_the_plot_mode_selection(panel, signals):
+    first = signals.add(RPM)
+    second = signals.add(GEAR)
+    panel.set_plot_mode(True, [first, second])
+    signals.add(CODE)  # a structural change resets the model
+    assert signals.visible_entries() == [first, second]
+    assert panel.selected_entries() == [first, second]
 
 
 def test_a_signal_the_log_cannot_decode_is_greyed_out(panel, signals):

@@ -8,6 +8,26 @@ under `## [Unreleased]` as they are merged; cutting a release moves them under a
 heading with its date. See [Build and Release](docs/architecture.md#build-and-release)
 for the procedure.
 
+## [Unreleased]
+
+### Added
+
+- **Open more than BLF, ASC and MF4.** PEAK `.trc` traces, candump `.log` files and CSV open in the trace as well, from **File → Open Log…** or by dropping them on the window. A CSV written by **Export** opens again here; it carries no error-state-indicator flag.
+- The signal list has a **y** column: the plain number behind **Value** at cursor 1, so a signal with a value table shows both its name and its number.
+- **Settings → Cursor width** sets how thick the measurement cursors are drawn, from 1 to 4 px. They are 2 px by default now, which also makes them easier to grab.
+
+### Changed
+
+- **Value** and **Value2** are what the old **Cursor 1** and **Cursor 2** columns are called, and a value-table entry reads as its name alone — `GEAR_OFF`, not `GEAR_OFF (0)`. The number moved to **y**.
+- Rows in the signal list are banded, and its checkboxes follow the theme like every other check box in the app instead of using the Windows one.
+- Switching a cursor on brings it to the middle of what is on screen instead of leaving it at the start of the log. Cursor 2 lands beside cursor 1 so the two lines never hide each other.
+- **Export** writes the file name you type, with nothing added: **MAT signals** and a **Simulink Dataset** are `<name>.mat`. All three `.mat` formats therefore share one name, so ticking more than one of them in a run leaves only the last. A mapping that declares both an input and an output interface still writes `<name>_input.mat` and `<name>_output.mat`, because those are two different files.
+- The signal list's column layout is remembered under a new key; the one saved by 2.1 is dropped, because the list gained a column.
+
+### Fixed
+
+- **Ctrl+click plot mode** no longer loses the signal you picked first: Ctrl+clicking a second one now adds to the selection instead of replacing it, and the selection survives adding, removing or moving a signal.
+
 ## [2.1.0] - 2026-11-18
 
 ### Added

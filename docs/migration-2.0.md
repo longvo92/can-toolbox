@@ -107,6 +107,8 @@ Stored under `HKEY_CURRENT_USER\Software\CanToolbox\CANToolbox`:
 | — | `theme` (`system`, `light`, `dark`) |
 | — | `window/geometry`, `window/state`, `tools/<tool>/geometry` |
 | `blf/*` inputs of the old window | unused; Export keeps `logview/export_*` instead |
+| — | `graph/line_width`, `graph/cursor_width` (1-4 px each) |
+| — | `graph/signal_header_v2`; the 2.1 key `graph/signal_header` is dropped on first start, because the signal list gained a column |
 
 Workspaces (`*.cantoolbox.json`) written by 1.0 open unchanged.
 

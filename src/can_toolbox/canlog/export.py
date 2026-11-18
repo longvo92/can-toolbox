@@ -234,11 +234,6 @@ def run_export(
     return JobResult(len(table), tuple(written), tuple(warnings))
 
 
-def signal_stem(base_name: str, fmt: str) -> str:
-    """Datasets get their own stem, so both MAT representations survive one run."""
-    return base_name if fmt == "signals" else f"{base_name}_dataset"
-
-
 def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Path]:
     """Decode the cut through the BLF → MAT engine, once per signal format."""
     from can_toolbox.blf_mat.config import load_config
@@ -251,7 +246,9 @@ def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Pat
     remap = dict(job.request.channel_map)
     written: list[Path] = []
     for fmt in job.signal_formats:
-        stem = signal_stem(job.base_name, fmt)
+        # The name the user typed is the name that is written. Two signal formats in one
+        # run therefore target the same file and the later one wins.
+        stem = job.base_name
         source = job.folder / f"{stem}.blf"  # a name for the logs, never read
         paths = SelectedPaths(
             blf_files=[source],
@@ -267,6 +264,7 @@ def _export_signals(table: FrameTable, job: ExportJob, log_callback) -> list[Pat
             output_format="mat" if fmt == "signals" else "dataset",
             tables={source: table},
             base_name=stem,
+            plain_names=True,
         )
         convert(paths, log_callback=log_callback)
         written.extend(sorted(job.folder.glob(f"{stem}*.mat")))

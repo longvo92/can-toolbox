@@ -212,11 +212,16 @@ def test_a_channel_scoped_dbc_only_decodes_its_own_channel(tmp_path, blf_runtime
     assert decoded["value"]["data"].tolist() == [7 * scale]
 
 
-def test_dataset_and_mat_signals_get_their_own_stem():
-    from can_toolbox.canlog.export import signal_stem
+def test_signal_formats_keep_the_name_the_user_typed(scoped_log, tmp_path, blf_runtime):
+    """No format token: MAT signals writes exactly <name>.mat."""
+    from can_toolbox.canlog import open_log
+    from can_toolbox.canlog.database import DbcAssignment, LogDatabase
 
-    assert signal_stem("drive_cut", "signals") == "drive_cut"
-    assert signal_stem("drive_cut", "dataset") == "drive_cut_dataset"
+    path, dbc = scoped_log
+    view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc, 1)]))
+    result = _signal_export(view, tmp_path / "plain", dbc)
+    assert [file.name for file in result.files] == ["cut.mat"]
+    assert not list((tmp_path / "plain").glob("cut_*.mat"))
 
 
 @pytest.fixture
@@ -253,7 +258,7 @@ def test_remapped_channels_keep_their_dbc_scope(scoped_log, tmp_path, blf_runtim
     path, dbc = scoped_log
     view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc, 1)]))
     result = _signal_export(view, tmp_path / "remapped", dbc, channel_map=((1, 5),))
-    scenario = loadmat(tmp_path / "remapped" / "cut_signals.mat", simplify_cells=True)["Scenario"]
+    scenario = loadmat(tmp_path / "remapped" / "cut.mat", simplify_cells=True)["Scenario"]
     assert result.frames == 2
     # Decoded from the one frame of the assigned bus, not defaulted to 0.
     assert np.atleast_1d(scenario["Shared"]["Value"]["Data"]).tolist() == [7]
@@ -273,5 +278,5 @@ def test_a_config_beside_the_app_applies_to_an_export(scoped_log, tmp_path, monk
     monkeypatch.setattr(blf_options, "application_directory", lambda: beside)
     view = LogView(open_log(path), LogDatabase.load([DbcAssignment(dbc, 1)]))
     _signal_export(view, tmp_path / "default_config", dbc)
-    scenario = loadmat(tmp_path / "default_config" / "cut_input.mat", simplify_cells=True)["Scenario"]
+    scenario = loadmat(tmp_path / "default_config" / "cut.mat", simplify_cells=True)["Scenario"]
     assert np.atleast_1d(scenario["Inputs"]["Enable"]["Data"]).tolist() == [3, 3]

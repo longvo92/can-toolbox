@@ -423,14 +423,14 @@ QScrollArea#workspaceScroll QScrollBar::add-line:vertical,
 QScrollArea#workspaceScroll QScrollBar::sub-line:vertical { height: 0; }
 QScrollArea#workspaceScroll QScrollBar::add-page:vertical,
 QScrollArea#workspaceScroll QScrollBar::sub-page:vertical { background: transparent; }
-QTableView, QTreeWidget, QTableWidget {
+QTableView, QTreeView, QTreeWidget, QTableWidget {
     alternate-background-color: $alternate;
     selection-background-color: $accent_soft;
     selection-color: $text;
     outline: none;
 }
-QTableView::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected,
-QListWidget::item:selected {
+QTableView::item:selected, QTreeView::item:selected, QTreeWidget::item:selected,
+QTableWidget::item:selected, QListWidget::item:selected {
     background: $accent_soft;
     color: $text;
 }
@@ -537,27 +537,32 @@ QComboBox::down-arrow {
     check = tinted_asset("checkbox-check.svg", theme.accent_text)
     if check is not None:
         rules += Template("""
-QCheckBox::indicator, QListWidget::indicator {
+QCheckBox::indicator, QListWidget::indicator, QTreeView::indicator {
     width: 15px;
     height: 15px;
     border: 1px solid $disabled_soft;
     border-radius: 3px;
     background-color: $surface;
 }
-QCheckBox::indicator:unchecked:hover, QListWidget::indicator:unchecked:hover {
+QCheckBox::indicator:unchecked:hover, QListWidget::indicator:unchecked:hover, QTreeView::indicator:unchecked:hover {
     border-color: $accent;
     background-color: $accent_tint;
 }
-QCheckBox::indicator:checked, QListWidget::indicator:checked {
+QCheckBox::indicator:checked, QListWidget::indicator:checked, QTreeView::indicator:checked {
     border-color: $accent_strong;
     background-color: $accent_strong;
     image: url("$check");
 }
-QCheckBox::indicator:disabled, QListWidget::indicator:disabled {
+QCheckBox::indicator:indeterminate, QListWidget::indicator:indeterminate,
+QTreeView::indicator:indeterminate {
+    border-color: $accent_strong;
+    background-color: $accent_soft;
+}
+QCheckBox::indicator:disabled, QListWidget::indicator:disabled, QTreeView::indicator:disabled {
     border-color: $check_disabled;
     background-color: $field_disabled_bg;
 }
-QCheckBox::indicator:checked:disabled, QListWidget::indicator:checked:disabled {
+QCheckBox::indicator:checked:disabled, QListWidget::indicator:checked:disabled, QTreeView::indicator:checked:disabled {
     border-color: $disabled_soft;
     background-color: $disabled_soft;
 }

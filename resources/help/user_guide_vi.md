@@ -2,11 +2,11 @@
 
 Cửa sổ chính là Log Viewer. Menu **File** gom mọi thao tác với log đang mở, **Công cụ** mở
 So sánh DBC trong cửa sổ riêng, còn **Cài đặt → Cài đặt…** gồm ngôn ngữ, chủ đề (theo Windows,
-Sáng hoặc Tối), độ dày đường đồ thị và đường dẫn MATLAB.
+Sáng hoặc Tối), độ dày đường đồ thị, độ dày cursor và đường dẫn MATLAB.
 
 ## Log Viewer
 
-1. Chọn **File → Mở log…** (Ctrl+O) hoặc kéo thả file `.blf`, `.asc`, `.mf4` vào cửa sổ. Có thể chọn hoặc kéo thả nhiều file một lần; mỗi file đọc lần lượt ở luồng nền, **Hủy** dừng cả hàng đợi. **File → Log gần đây** mở lại tám log gần nhất, **Nạp lại** (F5) đọc lại log hiện tại.
+1. Chọn **File → Mở log…** (Ctrl+O) hoặc kéo thả file `.blf`, `.asc`, `.mf4`, `.trc` (PEAK), `.log` (candump) hoặc `.csv` vào cửa sổ. Có thể chọn hoặc kéo thả nhiều file một lần; mỗi file đọc lần lượt ở luồng nền, **Hủy** dừng cả hàng đợi. **File → Log gần đây** mở lại tám log gần nhất, **Nạp lại** (F5) đọc lại log hiện tại.
 2. Log mở thêm chứ không thay thế: tab **Danh sách log** cạnh Trace liệt kê mọi log đang mở kèm thời lượng, số frame, channel và đường dẫn; log hiện tại in đậm. Nhấp đúp một dòng hoặc chọn **Chọn làm log hiện tại** để xem log đó trong Trace và đồ thị. Menu chuột phải còn có **Export…**, **Tải lại** và **Đóng** (chọn được nhiều dòng). Mỗi log giữ toàn bộ frame trong RAM nên đóng bớt log không dùng sẽ giải phóng bộ nhớ.
 3. Danh sách signal giữ nguyên khi đổi log. Signal không có trong log hiện tại hiện màu xám, tooltip ghi *không có trong log này*, và không được vẽ.
 4. Chọn **File → File DBC…** để thêm database và gán cho **Mọi channel** hoặc một channel CAN. DBC gán theo channel được ưu tiên; kéo thả file `.dbc` sẽ thêm cho mọi channel.
@@ -24,11 +24,13 @@ Mở **Hiển thị → Danh sách signal**: đây là cửa sổ riêng, có ô
 **Thêm vào đồ thị**. Mỗi signal có một plot riêng trên cùng trục thời gian và giữ giá trị
 cho tới frame kế tiếp.
 
-Bảng bên trái đồ thị là danh sách đang vẽ. Mỗi dòng hiện tên signal theo màu đường vẽ, giá
-trị tại **Cursor 1** và **Cursor 2**, cùng **Min**, **Max** và **Chênh lệch** — tính trên
-khoảng giữa hai cursor khi đang đo, còn lại tính trên khoảng thời gian đang hiển thị. Bỏ tick
-một dòng để giữ signal trong danh sách mà không vẽ; cột Cursor 2 và Chênh lệch chỉ hiện khi
-bật cursor thứ hai, các cột khác ẩn/hiện qua menu chuột phải trên header.
+Bảng bên trái đồ thị là danh sách đang vẽ. Mỗi dòng hiện tên signal theo màu đường vẽ, cột
+**Value** là giá trị tại cursor 1 — hiện tên trong value table nếu signal có — cột **y** là
+giá trị số thô tương ứng, cột **Value2** là giá trị tại cursor 2, cùng **Min**, **Max** và
+**Chênh lệch** — tính trên khoảng giữa hai cursor khi đang đo, còn lại tính trên khoảng thời
+gian đang hiển thị. Các dòng được tô nền xen kẽ cho dễ đọc. Bỏ tick một dòng để giữ signal
+trong danh sách mà không vẽ; cột Value2 và Chênh lệch chỉ hiện khi bật cursor thứ hai, các
+cột khác ẩn/hiện qua menu chuột phải trên header.
 
 Hàng tên nhóm được tô nền cả dòng nên dễ phân biệt với signal.
 
@@ -45,7 +47,7 @@ tối đa 16 plot cùng lúc; danh sách thì không giới hạn.
 |---|---|
 | **Vừa khung ▾** | Trục X theo toàn bộ log, rồi chỉnh trục Y mọi plot theo khoảng đó; menu có **Vừa trục X** và **Vừa trục Y** |
 | **Phóng to / Thu nhỏ** | Co giãn trục thời gian quanh cursor 1 |
-| **Cursor 1 / Cursor 2** | Hiện cursor chính và cursor đo |
+| **Cursor 1 / Cursor 2** | Hiện cursor chính và cursor đo; bật cursor nào thì cursor đó nhảy về giữa khung nhìn |
 | **◀ / ▶** | Đưa cursor 1 tới lần đổi giá trị trước hoặc sau của signal đang chọn |
 | **Bỏ plot / Xóa đồ thị** | Gỡ plot đang chọn, hoặc gỡ tất cả |
 | **Ảnh ▾** | Lưu đồ thị thành file PNG, hoặc chép vào clipboard |
@@ -68,13 +70,13 @@ chia sẻ cả thư mục dự án.
 1. **Khoảng:** toàn bộ log, đoạn giữa hai cursor của đồ thị, hoặc nhập từ/đến theo giây. Tích **Chỉ các frame đang hiện trong trace** để áp dụng bộ lọc hiện tại. **Đổi channel** đánh số lại bus (`1=2, 2=1`), **Mốc thời gian** giữ nguyên hoặc bắt đầu lại từ 0.
 2. **Định dạng output:** BLF, ASC, MF4, CSV, **MAT frames**, **MAT signals**, **Simulink Dataset**. Hai định dạng signal cần định nghĩa: DBC đã gán trong Log Viewer, file config mapping, Excel template, hoặc kết hợp.
 3. **Định nghĩa signal:** **Config mapping** (`.yaml`, `.yml`, `.json` hoặc `.txt`) và **Excel template** tùy chọn. **Lưu Excel template…** tạo workbook rỗng đúng cột; **Lưu config nâng cấp…** ghi lại file cũ theo schema hiện tại.
-4. **Output:** chọn thư mục và một tên file. Mỗi định dạng tự thêm phần mở rộng; Dataset ghi thành `<tên>_dataset.mat`.
+4. **Output:** chọn thư mục và một tên file, ghi đúng như bạn gõ. Mỗi định dạng tự thêm phần mở rộng. MAT frames, MAT signals và Dataset đều ghi thành `<tên>.mat`, nên tích nhiều hơn một trong số đó thì chỉ còn file ghi sau cùng.
 
 | Input | File kết quả |
 |---|---|
 | Không có định nghĩa | `<tên>.mat` với struct `Frames`, cùng các định dạng frame đã tích |
-| Chỉ có DBC | `<tên>_signals.mat`: mỗi message một nhóm, signal nằm bên trong |
-| Config mapping hoặc Excel template | `<tên>_input.mat` và/hoặc `<tên>_output.mat` theo interface đã khai báo |
+| Chỉ có DBC | `<tên>.mat`: mỗi message một nhóm, signal nằm bên trong |
+| Config mapping hoặc Excel template | `<tên>.mat`, hoặc `<tên>_input.mat` và `<tên>_output.mat` khi khai báo cả hai chiều |
 
 Bản cắt BLF giữ frame CAN và CAN FD, error frame, channel, hướng và thời gian nanosecond.
 Marker, comment và đối tượng không phải CAN không được chép sang; **Thông tin log** liệt kê

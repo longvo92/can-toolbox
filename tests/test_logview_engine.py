@@ -157,3 +157,96 @@ def test_mf4_bus_logging_opens(tmp_path):
     assert log.frames.arbitration_id.tolist() == [0x100 + i for i in range(6)]
     assert log.frames.channel.tolist() == [1, 2, 1, 2, 1, 2]
     assert np.allclose(log.frames.seconds(), [0.5 * i for i in range(6)], atol=1e-6)
+
+
+def test_peak_trace_opens(tmp_path):
+    path = tmp_path / "drive.trc"
+    messages = [can.Message(is_extended_id=False, timestamp=10 + i * 0.5, arbitration_id=0x100 + i,
+                            data=bytes([i] * 8), channel=1) for i in range(4)]
+    with can.TRCWriter(str(path)) as writer:
+        for message in messages:
+            writer.on_message_received(message)
+    log = open_log(path)
+    assert log.format == "TRC"
+    assert log.frames.arbitration_id.tolist() == [0x100 + i for i in range(4)]
+    assert np.allclose(log.frames.seconds(), [0.5 * i for i in range(4)], atol=1e-3)
+
+
+def test_candump_log_opens_and_names_its_buses(tmp_path):
+    """candump writes a bus name, not a number; each name gets a channel of its own."""
+    path = tmp_path / "drive.log"
+    with can.CanutilsLogWriter(str(path)) as writer:
+        for index in range(4):
+            writer.on_message_received(can.Message(
+                is_extended_id=False, timestamp=5 + index * 0.25, arbitration_id=0x200 + index,
+                data=bytes([index] * 4), channel="vcan0" if index % 2 == 0 else "vcan1"))
+    log = open_log(path)
+    assert log.format == "candump"
+    assert log.frames.arbitration_id.tolist() == [0x200 + i for i in range(4)]
+    assert log.frames.channel.tolist() == [1, 2, 1, 2]
+    assert np.allclose(log.frames.seconds(), [0.25 * i for i in range(4)], atol=1e-6)
+
+
+def test_a_named_bus_keeps_the_number_in_its_name():
+    """candump calls the second bus can1 even when the first never appears."""
+    from can_toolbox.canlog.reader import _channel_number
+
+    named = {}
+    assert _channel_number("can1", named) == 2
+    assert _channel_number("vcan0", named) == 1
+    assert _channel_number("can1", named) == 2  # the same name keeps its channel
+    # A name with no number in it takes the lowest channel nothing else claimed.
+    assert _channel_number("pcan_usb", named) == 3
+    assert _channel_number(None, named) == 0
+    assert _channel_number(0, named) == 1  # python-can numbers its own channels from 0
+
+
+def _csv_source(tmp_path):
+    messages = [
+        can.Message(is_extended_id=False, timestamp=100.0, arbitration_id=0x100, data=b"\x01\x02", channel=0),
+        can.Message(is_extended_id=True, timestamp=100.5, arbitration_id=0x18FF0001, data=bytes(range(8)),
+                    channel=1, is_fd=True, bitrate_switch=True),
+        can.Message(is_extended_id=False, timestamp=101.0, arbitration_id=0x200, data=b"", channel=0,
+                    is_remote_frame=True, dlc=4),
+    ]
+    return frames_from_messages(messages)
+
+
+def test_an_exported_csv_opens_again(tmp_path):
+    from can_toolbox.canlog.export import export_table
+
+    table = _csv_source(tmp_path)
+    path = tmp_path / "cut.csv"
+    export_table(table, path, "csv")
+    log = open_log(path)
+    assert log.format == "CSV"
+    frames = log.frames
+    assert frames.arbitration_id.tolist() == table.arbitration_id.tolist()
+    assert frames.channel.tolist() == table.channel.tolist()
+    assert frames.dlc.tolist() == table.dlc.tolist()
+    assert frames.flags.tolist() == table.flags.tolist()
+    assert [frames.data(i) for i in range(len(frames))] == [table.data(i) for i in range(len(table))]
+    assert np.allclose(frames.seconds(), table.seconds(), atol=1e-6)
+
+
+def test_a_python_can_csv_opens_and_a_foreign_one_is_rejected(tmp_path):
+    path = tmp_path / "theirs.csv"
+    with can.CSVWriter(str(path)) as writer:
+        writer.on_message_received(can.Message(is_extended_id=False, timestamp=1.0,
+                                               arbitration_id=0x123, data=b"\xaa\xbb"))
+    log = open_log(path)
+    assert log.format == "CSV"
+    assert log.frames.arbitration_id.tolist() == [0x123]
+    assert log.frames.data(0) == b"\xaa\xbb"
+
+    stranger = tmp_path / "stranger.csv"
+    stranger.write_text("a,b,c\n1,2,3\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Unsupported CSV columns"):
+        open_log(stranger)
+
+
+def test_an_unknown_suffix_names_the_formats_that_open(tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_text("not a log", encoding="utf-8")
+    with pytest.raises(ValueError, match="Unsupported log format"):
+        open_log(path)

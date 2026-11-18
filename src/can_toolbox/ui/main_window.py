@@ -20,7 +20,13 @@ from can_toolbox.app_paths import changelog_path, resource_path
 from can_toolbox.i18n import LANGUAGES
 from can_toolbox.release_notes import published_release_notes
 from can_toolbox.ui.logview.window import LogViewerWindow
-from can_toolbox.ui.settings_dialog import line_width, migrate_tool_settings, open_settings, theme_mode
+from can_toolbox.ui.settings_dialog import (
+    cursor_width,
+    line_width,
+    migrate_tool_settings,
+    open_settings,
+    theme_mode,
+)
 from can_toolbox.ui.theme import configure_appearance, current_theme
 from can_toolbox.ui.tool_windows import ToolWindow
 from can_toolbox.ui.widgets import dialog_buttons
@@ -201,6 +207,7 @@ class MainWindow(LogViewerWindow):
         )
         if saved:
             self.graph.set_line_width(line_width(self._settings))
+            self.graph.set_cursor_width(cursor_width(self._settings))
 
     # -- shutdown ------------------------------------------------------------------
 

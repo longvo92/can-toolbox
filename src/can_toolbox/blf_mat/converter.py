@@ -199,6 +199,9 @@ class SelectedPaths:
     # Frames the caller already holds, for example the cut the Log Viewer exports.
     tables: dict[Path, Any] = field(default_factory=dict)
     base_name: str = ""
+    # Write the name the caller chose, with no format token: the Log Viewer's Export.
+    # A mapping with both sides still needs two names, so those keep _input/_output.
+    plain_names: bool = False
     # DBC file -> CAN channel it was assigned to (0 or missing: every channel).
     dbc_channels: dict[str, int] = field(default_factory=dict)
 
@@ -1193,11 +1196,17 @@ def _convert(paths: SelectedPaths) -> int:
             inferred_only = bool(paths.dbc_sources) and not (
                 paths.excel or paths.config.has_interfaces or input_mapping_config or input_forces
             )
-            input_suffix = "signals" if inferred_only else "input"
-            input_mat = (
-                paths.output_folder / f"{stem}_{input_suffix}.mat" if input_scenario else None
-            )
-            output_mat = paths.output_folder / f"{stem}_output.mat" if output_scenario else None
+            if paths.plain_names and not (input_scenario and output_scenario):
+                # One scenario, so the caller's own name is enough.
+                plain = paths.output_folder / f"{stem}.mat"
+                input_mat = plain if input_scenario else None
+                output_mat = plain if output_scenario else None
+            else:
+                input_suffix = "signals" if inferred_only else "input"
+                input_mat = (
+                    paths.output_folder / f"{stem}_{input_suffix}.mat" if input_scenario else None
+                )
+                output_mat = paths.output_folder / f"{stem}_output.mat" if output_scenario else None
             if not input_scenario and not output_scenario:
                 continue
             if paths.output_format == "mat":

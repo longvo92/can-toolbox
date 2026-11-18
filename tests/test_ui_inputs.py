@@ -241,13 +241,15 @@ class GuiInputTests(unittest.TestCase):
 
         def choose(dialog, accepted):
             self.assertEqual(dialog.windowTitle(), "Settings")
-            gui, report, theme, width = dialog.findChildren(QComboBox)
+            gui, report, theme, width, cursor = dialog.findChildren(QComboBox)
             self.assertEqual((gui.currentData(), report.currentData(), theme.currentData(),
-                              width.currentData()), ("en", "gui", "system", "2"))
+                              width.currentData(), cursor.currentData()),
+                             ("en", "gui", "system", "2", "2"))
             gui.setCurrentIndex(gui.findData("vi"))
             report.setCurrentIndex(report.findData("en"))
             theme.setCurrentIndex(theme.findData("dark"))
             width.setCurrentIndex(width.findData("3"))
+            cursor.setCurrentIndex(cursor.findData("4"))
             return QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
 
         with patch.object(QDialog, "exec", new=lambda dialog: choose(dialog, False)):
@@ -266,6 +268,7 @@ class GuiInputTests(unittest.TestCase):
         self.assertEqual(self.settings.value("report_language"), "en")
         self.assertEqual(self.settings.value("theme"), "dark")
         self.assertEqual(self.settings.value("graph/line_width", type=int), 3)
+        self.assertEqual(self.settings.value("graph/cursor_width", type=int), 4)
         self.assertEqual(app_theme.manager.theme.name, "dark")
         self.assertIn(app_theme.DARK.window, self.app.styleSheet())
 

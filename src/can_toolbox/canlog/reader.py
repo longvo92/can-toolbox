@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,7 +20,11 @@ from can_toolbox.canlog.table import (
     FrameTable,
 )
 
-SUPPORTED_SUFFIXES = (".blf", ".asc", ".mf4")
+SUPPORTED_SUFFIXES = (".blf", ".asc", ".mf4", ".trc", ".log", ".csv")
+# What ``LogFile.format`` reports per suffix; BLF and CSV are named by their readers.
+_FORMAT_NAMES = {".asc": "ASC", ".mf4": "MF4", ".trc": "TRC", ".log": "candump"}
+# "can0", "vcan1", "slcan2": the bus number the interface name ends with.
+_TRAILING_NUMBER = re.compile(r"(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -46,10 +51,17 @@ def open_log(
         if info.trailing_bytes:
             warnings.append(f"Ignored {info.trailing_bytes} bytes of an incomplete last object")
         return LogFile(path, frames, "BLF", tuple(warnings))
-    if suffix in (".asc", ".mf4"):
-        # python-can parses ASC text and ASAM MDF4 bus logging (through asammdf).
+    if suffix == ".csv":
+        from can_toolbox.canlog.csv_log import is_python_can_csv, read_csv
+
+        if is_python_can_csv(path):
+            return LogFile(path, read_with_python_can(path, progress=progress, cancel=cancel), "CSV")
+        return LogFile(path, read_csv(path, progress=progress, cancel=cancel), "CSV")
+    if suffix in _FORMAT_NAMES:
+        # python-can parses ASC text, ASAM MDF4 bus logging (through asammdf),
+        # PEAK TRC traces and candump logs.
         frames = read_with_python_can(path, progress=progress, cancel=cancel)
-        return LogFile(path, frames, suffix[1:].upper())
+        return LogFile(path, frames, _FORMAT_NAMES[suffix])
     raise ValueError(f"Unsupported log format {path.suffix!r}; expected one of {', '.join(SUPPORTED_SUFFIXES)}")
 
 
@@ -62,11 +74,13 @@ def frames_from_messages(messages, start_time: float | None = None) -> FrameTabl
     flags: list[int] = []
     lengths: list[int] = []
     chunks: list[bytes] = []
+    # candump and TRC name their bus instead of numbering it; give each name a number
+    # of its own so a multi-bus log does not collapse onto one channel.
+    named_channels: dict[str, int] = {}
     for message in messages:
         time_s.append(float(message.timestamp))
         ids.append(int(message.arbitration_id))
-        channel = message.channel
-        channels.append(int(channel) + 1 if isinstance(channel, (int, np.integer)) and channel >= 0 else 0)
+        channels.append(_channel_number(message.channel, named_channels))
         data = bytes(message.data)
         chunks.append(data)
         lengths.append(len(data))
@@ -94,6 +108,30 @@ def frames_from_messages(messages, start_time: float | None = None) -> FrameTabl
         payload=np.frombuffer(b"".join(chunks), np.uint8).copy(),
         start_time=origin,
     )
+
+
+def _channel_number(channel, named: dict[str, int]) -> int:
+    """Vector-style 1-based channel; 0 when the log does not say which bus."""
+    if isinstance(channel, (int, np.integer)) and not isinstance(channel, bool):
+        return int(channel) + 1 if channel >= 0 else 0
+    if channel is None:
+        return 0
+    name = str(channel).strip()
+    if not name:
+        return 0
+    if name in named:
+        return named[name]
+    # candump names its bus, and the name carries the number: can0 is the first
+    # bus, vcan1 the second. A name without one is numbered in order of appearance,
+    # skipping whatever the numbered names have already claimed.
+    numbered = _TRAILING_NUMBER.search(name)
+    if numbered:
+        return named.setdefault(name, int(numbered.group(1)) + 1)
+    taken = set(named.values())
+    free = 1
+    while free in taken:
+        free += 1
+    return named.setdefault(name, free)
 
 
 def _dlc_code(message, length: int) -> int:
