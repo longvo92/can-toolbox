@@ -140,12 +140,52 @@ def test_a_signal_the_log_cannot_decode_is_greyed_out(panel, signals):
 def test_plot_mode_makes_the_selection_the_visible_set(panel, signals):
     first = signals.add(RPM)
     second = signals.add(GEAR)
+    signals.set_visible(second, False)  # unticked before the mode is switched on
+
     panel.set_plot_mode(True)
+    assert [entry.visible for entry in signals.entries()] == [True, True]  # every box is ticked
+    assert signals.visible_entries() == []  # nothing selected yet, so nothing is drawn
     panel.view.setCurrentIndex(panel.model.index_of(second))
     assert [entry.ref for entry in signals.visible_entries()] == [GEAR]
+
     panel.set_plot_mode(False)
+    assert [entry.ref for entry in signals.visible_entries()] == [RPM, GEAR]  # back to the boxes
     panel.view.setCurrentIndex(panel.model.index_of(first))
-    assert [entry.ref for entry in signals.visible_entries()] == [GEAR]  # selection no longer decides
+    assert [entry.ref for entry in signals.visible_entries()] == [RPM, GEAR]  # selection no longer decides
+
+
+def test_checkboxes_are_ignored_while_plot_mode_runs(panel, signals):
+    """The two ways of choosing lanes must not fight over the same rows."""
+    entry = signals.add(RPM)
+    signals.add(GEAR)
+    panel.set_plot_mode(True)
+    index = panel.model.index_of(entry)
+
+    assert panel.model.data(index, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+    assert not (panel.model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable)
+    assert not panel.model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert entry.visible
+    signals.set_visible(entry, False)  # even the model API leaves it alone
+    assert entry.visible
+
+    panel.set_plot_mode(False)
+    assert panel.model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable
+    assert panel.model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert not entry.visible
+
+
+def test_group_rows_are_painted_across_every_column(panel, signals):
+    from can_toolbox.ui import theme as app_theme
+
+    group = signals.new_group("Powertrain")
+    signals.add(RPM, group)
+    group_index = panel.model.index(0, 0)
+    for column in range(panel.model.columnCount()):
+        brush = panel.model.data(group_index.siblingAtColumn(column), Qt.ItemDataRole.BackgroundRole)
+        assert brush is not None and brush.color().name() == app_theme.current_theme().group_row
+    assert panel.model.data(group_index, Qt.ItemDataRole.FontRole).bold()
+    child = panel.model.index(0, 0, group_index)
+    assert panel.model.data(child, Qt.ItemDataRole.BackgroundRole) is None
 
 
 def test_dropping_signals_adds_or_moves_them(panel, signals):
@@ -195,17 +235,15 @@ def test_extrema_hold_the_sample_before_the_window():
     assert empty.extrema(0.0, 1.0) is None
 
 
-def test_plot_mode_restored_from_a_workspace_keeps_saved_visibility(panel, signals):
-    """Nothing is selected yet, so the saved visibility must survive."""
-    first = signals.add(RPM)
+def test_selecting_rows_restores_what_plot_mode_was_drawing(panel, signals):
+    """A workspace stores what was drawn; the panel selects it back."""
+    signals.add(RPM)
     second = signals.add(GEAR)
-    signals.set_visible(second, False)
-    panel.set_plot_mode(True, apply=False)
+    panel.select_entries([second])
+    panel.set_plot_mode(True)
     assert panel.plot_mode
-    assert [entry.ref for entry in signals.visible_entries()] == [RPM]
-    panel.view.setCurrentIndex(panel.model.index_of(second))
     assert [entry.ref for entry in signals.visible_entries()] == [GEAR]
-    del first
+    assert all(entry.visible for entry in signals.entries())
 
 
 def test_dropping_at_a_top_level_row_lands_in_the_root_list(panel, signals):

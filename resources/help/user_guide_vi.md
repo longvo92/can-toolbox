@@ -30,9 +30,13 @@ khoảng giữa hai cursor khi đang đo, còn lại tính trên khoảng thời
 một dòng để giữ signal trong danh sách mà không vẽ; cột Cursor 2 và Chênh lệch chỉ hiện khi
 bật cursor thứ hai, các cột khác ẩn/hiện qua menu chuột phải trên header.
 
+Hàng tên nhóm được tô nền cả dòng nên dễ phân biệt với signal.
+
 Chuột phải vào danh sách có **Thêm signal…**, **Nhóm mới**, **Đổi tên**, **Xóa**,
-**Chuyển sang nhóm**, **Mở hết/Thu hết** và **Chế độ vẽ theo lựa chọn** (các dòng đang chọn
-chính là các plot đang vẽ). Kéo thả để sắp xếp hoặc chuyển nhóm, nhấn Delete để gỡ. Đồ thị vẽ
+**Chuyển sang nhóm**, **Mở hết/Thu hết** và **Chế độ vẽ theo lựa chọn**. Khi bật chế độ này,
+các dòng đang chọn chính là các plot đang vẽ: mọi checkbox được tick và không còn tác dụng,
+nên hai cách chọn plot không chồng chéo nhau. Tắt chế độ thì quyền quyết định trả lại cho
+checkbox, lúc đó tất cả đang bật. Kéo thả để sắp xếp hoặc chuyển nhóm, nhấn Delete để gỡ. Đồ thị vẽ
 tối đa 16 plot cùng lúc; danh sách thì không giới hạn.
 
 Đồ thị có toolbar riêng:

@@ -50,6 +50,10 @@ class SignalSet(QObject):
         super().__init__(parent)
         self.groups: list[Group] = []
         self.root: list[Entry] = []
+        # Ctrl+click plot mode: the selection decides what is drawn and the
+        # per-signal checkboxes are left alone, all of them ticked.
+        self.plot_mode = False
+        self._selected: list[Entry] = []
 
     # -- reading -------------------------------------------------------------------
 
@@ -62,7 +66,17 @@ class SignalSet(QObject):
         return ordered
 
     def visible_entries(self) -> list[Entry]:
+        """What the graph draws, in display order.
+
+        In plot mode that is the selection; otherwise the ticked signals.
+        """
+        if self.plot_mode:
+            chosen = set(self._selected)
+            return [entry for entry in self.entries() if entry in chosen]
         return [entry for entry in self.entries() if entry.visible]
+
+    def selection(self) -> list[Entry]:
+        return [entry for entry in self.entries() if entry in set(self._selected)]
 
     def refs(self) -> list[SignalRef]:
         return [entry.ref for entry in self.entries()]
@@ -106,6 +120,7 @@ class SignalSet(QObject):
         for group in self.groups:
             group.entries = [entry for entry in group.entries if entry not in wanted]
         self.root = [entry for entry in self.root if entry not in wanted]
+        self._selected = [entry for entry in self._selected if entry not in wanted]
         self.changed.emit()
 
     def clear(self) -> None:
@@ -113,14 +128,19 @@ class SignalSet(QObject):
             return
         self.groups = []
         self.root = []
+        self._selected = []
         self.changed.emit()
 
     def set_visible(self, entry: Entry, visible: bool) -> None:
+        if self.plot_mode:
+            return  # the selection decides; every checkbox stays ticked
         if entry.visible != visible:
             entry.visible = visible
             self.changed.emit()
 
     def set_group_visible(self, group: Group, visible: bool) -> None:
+        if self.plot_mode:
+            return
         if any(entry.visible != visible for entry in group.entries):
             for entry in group.entries:
                 entry.visible = visible
@@ -131,16 +151,27 @@ class SignalSet(QObject):
             group.expanded = expanded
             self.changed.emit()
 
-    def show_only(self, entries) -> None:
-        """Plot-mode selection: exactly ``entries`` are visible."""
-        wanted = set(entries)
-        changed = False
-        for entry in self.entries():
-            visible = entry in wanted
-            if entry.visible != visible:
-                entry.visible = visible
-                changed = True
-        if changed:
+    def set_plot_mode(self, enabled: bool, selection=()) -> None:
+        """Turn Ctrl+click plot mode on or off.
+
+        Entering it ticks every signal, because the checkboxes stop deciding
+        anything: from then on the selection is what the graph draws. Leaving
+        it hands the decision back to the checkboxes, all of them on.
+        """
+        self._selected = [entry for entry in self.entries() if entry in set(selection)]
+        if enabled:
+            for entry in self.entries():
+                entry.visible = True
+        self.plot_mode = enabled
+        self.changed.emit()
+
+    def set_selection(self, entries) -> None:
+        """What the panel has selected; it only matters in plot mode."""
+        selected = [entry for entry in self.entries() if entry in set(entries)]
+        if selected == self._selected:
+            return
+        self._selected = selected
+        if self.plot_mode:
             self.changed.emit()
 
     def unique_group_name(self, base: str) -> str:

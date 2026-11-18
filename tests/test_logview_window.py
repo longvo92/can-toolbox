@@ -882,3 +882,31 @@ def test_a_batch_dropped_while_loading_keeps_its_order(window, log_files, tmp_pa
     assert window._queue == names
     wait_until(lambda: not window.is_busy() and len(window.logs) == 3)
     assert [entry.name for entry in window.logs] == ["drive.blf", "queued0.blf", "queued1.blf"]
+
+
+def test_a_workspace_in_plot_mode_comes_back_drawing_the_same_signals(window, log_files, tmp_path, legacy, app):
+    from can_toolbox.canlog.refs import SignalRef
+
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Gear"))
+    gear = window.signals.entries()[1]
+    window.signal_panel.select_entries([gear])
+    window.signal_panel.set_plot_mode(True)
+    assert [series.ref.signal for series in window.graph.series] == ["Gear"]
+    window.save_workspace(tmp_path / "plotmode.json")
+    saved = tmp_path / "plotmode.cantoolbox.json"
+
+    other = MainWindow(QSettings(str(tmp_path / "other.ini"), QSettings.Format.IniFormat), legacy=legacy)
+    try:
+        other.open_workspace(saved)
+        wait_until(lambda: not other.is_busy() and len(other.signals.entries()) == 2)
+        assert other.signal_panel.plot_mode
+        assert [entry.ref.signal for entry in other.signals.visible_entries()] == ["Gear"]
+        assert all(entry.visible for entry in other.signals.entries())  # every box ticked
+        assert [series.ref.signal for series in other.graph.series] == ["Gear"]
+    finally:
+        other.wait_for_workers()
+        other.close()
+        other.deleteLater()
+        app.processEvents()

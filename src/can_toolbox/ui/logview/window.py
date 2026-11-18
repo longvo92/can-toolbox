@@ -64,8 +64,9 @@ def _frame_index(index):
     return parent if parent.isValid() else index
 
 
-def _plotted(entry) -> PlottedSignal:
-    return PlottedSignal(entry.ref, entry.visible, entry.color_index)
+def _plotted(entry, drawn) -> PlottedSignal:
+    """What a workspace stores: whether this signal is drawn, and its colour."""
+    return PlottedSignal(entry.ref, entry in drawn, entry.color_index)
 
 
 class LogViewerWindow(QMainWindow):
@@ -822,6 +823,7 @@ class LogViewerWindow(QMainWindow):
         from can_toolbox.canlog.workspace import Workspace
 
         active = self.logs.active
+        drawn = set(self.signals.visible_entries())
         return Workspace(
             log=self.log_path,
             logs=tuple(self.logs.paths()),
@@ -833,9 +835,9 @@ class LogViewerWindow(QMainWindow):
             errors=self.filters.errors_input.isChecked(),
             mode=self.filters.mode(),
             time=self.filters.time_mode(),
-            signals=tuple(_plotted(entry) for entry in self.signals.root),
+            signals=tuple(_plotted(entry, drawn) for entry in self.signals.root),
             groups=tuple(
-                SignalGroup(group.name, tuple(_plotted(entry) for entry in group.entries), group.expanded)
+                SignalGroup(group.name, tuple(_plotted(entry, drawn) for entry in group.entries), group.expanded)
                 for group in self.signals.groups
             ),
             cursors=tuple(self.graph.cursor_time),
@@ -919,7 +921,13 @@ class LogViewerWindow(QMainWindow):
                 restore(plotted, group)
         for plotted in workspace.signals:
             restore(plotted, None)
-        self.signal_panel.set_plot_mode(workspace.plot_mode, apply=False)
+        if workspace.plot_mode:
+            # The checkboxes mean nothing in plot mode, so select what was drawn.
+            drawn = [entry for entry in self.signals.entries() if entry.visible]
+            self.signal_panel.select_entries(drawn)
+            self.signal_panel.set_plot_mode(True)
+        else:
+            self.signal_panel.set_plot_mode(False)
         self._refresh_graph()
         self.graph.restore_cursors(*workspace.cursors, workspace.measure)
         if missing:
