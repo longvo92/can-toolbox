@@ -42,9 +42,12 @@ class SignalSet(QObject):
 
     ``changed`` fires whenever the contents, the order, a colour or a
     visibility flag changes, so the panel and the graph can redraw.
+    ``selection_changed`` fires on its own for a plot mode selection, because
+    rebuilding the panel for one would clear the very selection it reports.
     """
 
     changed = Signal()
+    selection_changed = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -172,7 +175,7 @@ class SignalSet(QObject):
             return
         self._selected = selected
         if self.plot_mode:
-            self.changed.emit()
+            self.selection_changed.emit()
 
     def unique_group_name(self, base: str) -> str:
         if self.group_named(base) is None:

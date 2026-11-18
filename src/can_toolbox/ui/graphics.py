@@ -35,6 +35,9 @@ PLOT_HEIGHT = 80
 AXIS_WIDTH = 72
 LINE_WIDTHS = (1, 2, 3, 4)
 DEFAULT_LINE_WIDTH = 2
+# The cursor lines keep their own width: a curve and a measurement line are read differently.
+CURSOR_WIDTHS = (1, 2, 3, 4)
+DEFAULT_CURSOR_WIDTH = 2
 
 pg.setConfigOptions(antialias=False)
 
@@ -183,6 +186,7 @@ class GraphPanel(QWidget):
         self._measuring = False
         self._visible_cursors = [True, False]
         self._line_width = DEFAULT_LINE_WIDTH
+        self._cursor_width = DEFAULT_CURSOR_WIDTH
         self.plotted: list = []  # (Entry, SignalSeries) pairs in display order
         self._focus = None
         self._theme = app_theme.current_theme()
@@ -324,10 +328,13 @@ class GraphPanel(QWidget):
             return
         self._measuring = enabled
         self._visible_cursors[1] = enabled
-        if enabled and self._plots:
-            low, high = self._plots[0].viewRange()[0]
-            if not low <= self.cursor_time[1] <= high:
-                self.cursor_time[1] = self.cursor_time[0] + (high - low) / 10
+        if enabled:
+            # Switching a cursor on brings it to where the user is looking, not to t = 0.
+            # Cursor 2 lands beside the middle so the two lines never hide each other.
+            centre = self._view_centre()
+            if centre is not None:
+                low, high = self.x_range()
+                self.cursor_time[1] = centre + (high - low) / 10
         for line in self._cursors[1]:
             line.setValue(self.cursor_time[1])
             line.setVisible(enabled)
@@ -335,13 +342,25 @@ class GraphPanel(QWidget):
         self.measuring_changed.emit(enabled)
 
     def set_cursor_visible(self, cursor: int, visible: bool) -> None:
-        """Hide a cursor line without forgetting where it is."""
+        """Show or hide a cursor line; showing it brings it to the middle of the view."""
         if cursor == 1:
             self.set_measuring(visible)
             return
         self._visible_cursors[cursor] = visible
+        if visible:
+            centre = self._view_centre()
+            if centre is not None:
+                self.set_cursor(centre)
+                self.cursor_moved.emit(centre)
         for line in self._cursors[cursor]:
             line.setVisible(visible)
+
+    def _view_centre(self) -> float | None:
+        """Middle of the time axis on screen, or ``None`` when nothing is plotted."""
+        if not self._plots:
+            return None
+        low, high = self.x_range()
+        return (low + high) / 2 if high > low else None
 
     def x_range(self) -> tuple[float, float]:
         if not self._plots:
@@ -470,6 +489,17 @@ class GraphPanel(QWidget):
         self._line_width = width
         self._rebuild()
 
+    def cursor_width(self) -> int:
+        return self._cursor_width
+
+    def set_cursor_width(self, width: int) -> None:
+        """Cursor line thickness in pixels; a thicker line is also easier to grab."""
+        width = min(max(int(width), CURSOR_WIDTHS[0]), CURSOR_WIDTHS[-1])
+        if width == self._cursor_width:
+            return
+        self._cursor_width = width
+        self._rebuild()
+
     def apply_theme(self, theme) -> None:
         """Repaint the plots in ``theme``: background, axes, curves and cursors."""
         self._theme = theme
@@ -544,7 +574,8 @@ class GraphPanel(QWidget):
                 plot.setLabel("bottom", self._binder.tr("Time (s)"))
             for cursor, color_line in ((0, theme.cursor_primary), (1, theme.cursor_secondary)):
                 line = pg.InfiniteLine(
-                    pos=self.cursor_time[cursor], angle=90, movable=True, pen=pg.mkPen(color_line, width=1),
+                    pos=self.cursor_time[cursor], angle=90, movable=True,
+                    pen=pg.mkPen(color_line, width=self._cursor_width),
                 )
                 line.setVisible(self._visible_cursors[cursor])
                 line.sigPositionChanged.connect(lambda moved, c=cursor: self._cursor_dragged(c, moved))

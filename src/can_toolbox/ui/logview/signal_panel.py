@@ -29,10 +29,12 @@ from can_toolbox.ui.graphics import refs_from_mime, refs_to_mime
 from can_toolbox.ui.logview.signal_set import Entry, Group, SignalSet
 from can_toolbox.ui.widgets import TextBinder
 
-COLUMNS = ("Signal", "Cursor 1", "Cursor 2", "Min", "Max", "Delta")
-CURSOR2_COLUMN = 2
-DELTA_COLUMN = 5
-HEADER_KEY = "graph/signal_header"
+COLUMNS = ("Signal", "Value", "y", "Value2", "Min", "Max", "Delta")
+CURSOR2_COLUMN = 3
+DELTA_COLUMN = 6
+# The column set changed in 2.2; a layout saved for the old one cannot be restored.
+HEADER_KEY = "graph/signal_header_v2"
+LEGACY_HEADER_KEY = "graph/signal_header"
 NAME_WIDTH = 200
 MIME = "application/x-can-toolbox-signal"
 
@@ -44,8 +46,8 @@ class SignalTreeModel(QAbstractItemModel):
         super().__init__(parent)
         self.signals = signals
         self.headers = list(COLUMNS)
-        # (cursor 1, cursor 2, min, max, delta) per entry, filled by the panel.
-        self.values: dict[int, tuple[str, str, str, str, str]] = {}
+        # (value, y, value2, min, max, delta) per entry, filled by the panel.
+        self.values: dict[int, tuple[str, str, str, str, str, str]] = {}
         self.missing: set[int] = set()
         self._theme = app_theme.current_theme()
 
@@ -121,7 +123,7 @@ class SignalTreeModel(QAbstractItemModel):
         if role == Qt.ItemDataRole.DisplayRole:
             if column == 0:
                 return item.ref.signal
-            return self.values.get(id(item), ("", "", "", "", ""))[column - 1]
+            return self.values.get(id(item), ("", "", "", "", "", ""))[column - 1]
         if role == Qt.ItemDataRole.CheckStateRole and column == 0:
             if self.signals.plot_mode:
                 return Qt.CheckState.Checked  # the selection decides instead
@@ -244,6 +246,7 @@ class SignalPanel(QWidget):
         self.view = QTreeView(self)
         self.view.setModel(self.model)
         self.view.setUniformRowHeights(True)
+        self.view.setAlternatingRowColors(True)
         self.view.setAllColumnsShowFocus(True)
         self.view.setRootIsDecorated(True)
         self.view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -299,29 +302,42 @@ class SignalPanel(QWidget):
         self.model.endResetModel()
         for row, group in enumerate(self.signals.groups):
             self.view.setExpanded(self.model.index(row, 0), group.expanded)
+        # Resetting the model clears the view's selection without saying so, which
+        # would make the next Ctrl+click start from nothing. Put it back silently.
+        chosen = self.signals.selection()
+        if chosen:
+            selection_model = self.view.selectionModel()
+            blocked = selection_model.blockSignals(True)
+            try:
+                self.select_entries(chosen)
+            finally:
+                selection_model.blockSignals(blocked)
         self.refresh_values()
 
     def refresh_values(self) -> None:
         """Recompute the value columns; min and max follow the cursors or the view."""
         first, second = self._cursors
         low, high = (min(first, second), max(first, second)) if self._measuring else self._range
-        values: dict[int, tuple[str, str, str, str, str]] = {}
+        values: dict[int, tuple[str, str, str, str, str, str]] = {}
         missing: set[int] = set()
         for entry in self.signals.entries():
             series = self.series_for(entry.ref) if self.series_for else None
             # No samples means the active log does not carry this signal.
             if series is None or not len(series.time):
                 missing.add(id(entry))
-                values[id(entry)] = ("", "", "", "", "")
+                values[id(entry)] = ("", "", "", "", "", "")
                 continue
+            start = series.value_at(first)
             delta = ""
             if self._measuring:
-                start, stop = series.value_at(first), series.value_at(second)
+                stop = series.value_at(second)
                 if start is not None and stop is not None:
                     delta = f"{stop - start:.6g}"
             extrema = series.extrema(low, high) if high > low else None
             values[id(entry)] = (
                 series.text_at(first),
+                # y is the plain number behind Value, which may read as a named value.
+                f"{start:.6g}" if start is not None else "",
                 series.text_at(second) if self._measuring else "",
                 f"{extrema[0]:.6g}" if extrema else "",
                 f"{extrema[1]:.6g}" if extrema else "",
@@ -332,7 +348,7 @@ class SignalPanel(QWidget):
         self.model.refresh()
 
     def _apply_measure_columns(self) -> None:
-        """Cursor 2 and Delta only mean something while measuring."""
+        """Value2 and Delta only mean something while measuring."""
         for column in (CURSOR2_COLUMN, DELTA_COLUMN):
             self.view.setColumnHidden(column, not self._measuring)
 
@@ -490,6 +506,8 @@ class SignalPanel(QWidget):
     # -- header state --------------------------------------------------------------
 
     def _restore_header(self) -> None:
+        # A layout saved for the pre-2.2 column set cannot describe the new one.
+        self._settings.remove(LEGACY_HEADER_KEY)
         state = self._settings.value(HEADER_KEY)
         if state:
             self.view.header().restoreState(state)

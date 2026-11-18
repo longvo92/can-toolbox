@@ -77,10 +77,11 @@ class SignalSeries:
         if value is None:
             return ""
         if self.choices:
-            # Value tables are keyed by raw value.
+            # Value tables are keyed by raw value. The named value is the whole text:
+            # the number behind it has its own column.
             raw = round((value - self.offset) / self.scale) if self.scale else None
             if raw in self.choices:
-                return f"{self.choices[raw]} ({value:g})"
+                return str(self.choices[raw])
         return f"{value:.6g} {self.unit}".rstrip()
 
 

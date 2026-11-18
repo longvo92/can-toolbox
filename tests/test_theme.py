@@ -91,6 +91,19 @@ def test_curves_and_cursors_stand_out_on_the_plot(theme):
         assert ratio >= 3.0, f"{theme.name}: {token} is {ratio:.2f}:1 on the plot"
 
 
+@pytest.mark.parametrize("theme", [app_theme.LIGHT, app_theme.DARK], ids=lambda t: t.name)
+def test_tree_views_are_styled_like_the_other_item_views(theme):
+    """The signal panel is a QTreeView; without these rules it falls back to the
+    native check indicator and loses its banding."""
+    sheet = app_theme.stylesheet(theme)
+    assert "QTableView, QTreeView, QTreeWidget, QTableWidget {" in sheet
+    assert "QTreeView::indicator {" in sheet
+    assert "QTreeView::indicator:checked" in sheet
+    assert "QTreeView::item:selected" in sheet
+    # A group with some signals ticked must not read as an empty box.
+    assert "QTreeView::indicator:indeterminate" in sheet
+
+
 def test_only_the_theme_module_holds_colours():
     """A hard-coded hex in a widget would survive the theme switch unchanged."""
     offenders = []

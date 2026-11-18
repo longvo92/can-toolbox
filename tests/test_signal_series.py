@@ -84,9 +84,9 @@ def test_value_lookup_holds_and_labels_choices(source):
     assert gear.value_at(-1.0) is None and gear.text_at(-1.0) == ""
     assert gear.value_at(0.0) == 1.0
     # Physical 1 is raw 0 (scale 2, offset 1): the label comes from the raw value.
-    assert gear.text_at(0.0) == "Park (1)"
+    assert gear.text_at(0.0) == "Park"
     assert gear.value_at(0.0124) == 1.0
-    assert gear.text_at(gear.time[1]) == "Park (1)"
+    assert gear.text_at(gear.time[1]) == "Park"
     rpm = source.series(SignalRef(1, 0x100, "Engine", "Rpm"))
     assert rpm.text_at(rpm.time[2]).endswith(" rpm")
     assert gear.choices == {0: "Park", 1: "Drive"}

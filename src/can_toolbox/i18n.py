@@ -66,6 +66,7 @@ SHELL_VI = {
     "Copy Image": "Chép ảnh",
     "PNG image (*.png)": "Ảnh PNG (*.png)",
     "Line width": "Độ dày đường",
+    "Cursor width": "Độ dày cursor",
     "Filter bar": "Thanh lọc",
     "Trace": "Trace",
     "Graphics": "Đồ thị",

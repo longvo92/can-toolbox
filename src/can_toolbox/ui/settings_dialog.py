@@ -30,6 +30,9 @@ LEGACY_MATLAB_KEY = "blf/matlab"
 LINE_WIDTH_KEY = "graph/line_width"
 LINE_WIDTHS = (1, 2, 3, 4)
 DEFAULT_LINE_WIDTH = 2
+CURSOR_WIDTH_KEY = "graph/cursor_width"
+CURSOR_WIDTHS = (1, 2, 3, 4)
+DEFAULT_CURSOR_WIDTH = 2
 
 
 def migrate_tool_settings(settings: QSettings) -> None:
@@ -54,6 +57,12 @@ def line_width(settings: QSettings) -> int:
     """Curve thickness for the graph, in pixels."""
     value = settings.value(LINE_WIDTH_KEY, DEFAULT_LINE_WIDTH, type=int)
     return value if value in LINE_WIDTHS else DEFAULT_LINE_WIDTH
+
+
+def cursor_width(settings: QSettings) -> int:
+    """Measurement cursor thickness for the graph, in pixels."""
+    value = settings.value(CURSOR_WIDTH_KEY, DEFAULT_CURSOR_WIDTH, type=int)
+    return value if value in CURSOR_WIDTHS else DEFAULT_CURSOR_WIDTH
 
 
 # Workers keep running after the dialog closes; destroying a live QThread aborts the
@@ -99,6 +108,7 @@ class SettingsDialog(QDialog):
         mode: str,
         matlab: str,
         width: int = DEFAULT_LINE_WIDTH,
+        cursor: int = DEFAULT_CURSOR_WIDTH,
     ) -> None:
         super().__init__(parent)
         self._binder = binder
@@ -128,6 +138,9 @@ class SettingsDialog(QDialog):
         self.line_width_input = self._combo(*((f"{width} px", str(width)) for width in LINE_WIDTHS),
                                             current=str(width))
         self._row(appearance_form, 1, "Line width", self.line_width_input)
+        self.cursor_width_input = self._combo(*((f"{size} px", str(size)) for size in CURSOR_WIDTHS),
+                                              current=str(cursor))
+        self._row(appearance_form, 2, "Cursor width", self.cursor_width_input)
         layout.addWidget(appearance_card)
 
         matlab_card, matlab_form = section(binder, "MATLAB")
@@ -193,6 +206,7 @@ class SettingsDialog(QDialog):
             "report_language": str(self.report_input.currentData()),
             "theme": str(self.theme_input.currentData()),
             "line_width": str(self.line_width_input.currentData()),
+            "cursor_width": str(self.cursor_width_input.currentData()),
             "matlab": self.matlab_input.text().strip(),
         }
 
@@ -262,7 +276,7 @@ def open_settings(
     dialog = SettingsDialog(
         parent, binder, gui_language=gui_language, report_language=report_language,
         mode=theme_mode(settings), matlab=matlab_executable(settings),
-        width=line_width(settings),
+        width=line_width(settings), cursor=cursor_width(settings),
     )
     try:
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -273,6 +287,7 @@ def open_settings(
     settings.setValue(MATLAB_KEY, values["matlab"])
     settings.setValue(THEME_KEY, values["theme"])
     settings.setValue(LINE_WIDTH_KEY, int(values["line_width"]))
+    settings.setValue(CURSOR_WIDTH_KEY, int(values["cursor_width"]))
     application = QApplication.instance()
     if application is not None:
         app_theme.configure_appearance(application, values["theme"])

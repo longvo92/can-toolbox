@@ -224,19 +224,20 @@ def test_graph_plots_signals_and_syncs_cursor_with_trace(window, log_files):
     window.trace.setCurrentIndex(window.model.index(2, 0))
     assert window.graph.cursor_time[0] == pytest.approx(0.01)
     assert _value(panel, 0, 1) == "2000 rpm"
-    assert _value(panel, 1, 1) == "Drive (1)"
+    assert _value(panel, 1, 1) == "Drive"
+    assert _value(panel, 1, 2) == "1"  # y carries the number behind the named value
 
     # Dragging the graph cursor selects the last frame at or before it.
     window.graph._cursors[0][0].setValue(0.0251)
     assert window.trace.currentIndex().row() == 5
-    assert _value(panel, 1, 1) == "Park (0)"
+    assert _value(panel, 1, 1) == "Park"
 
     window.cursor2_action.setChecked(True)
     assert window.graph.measuring
     window.graph._cursors[1][0].setValue(0.1)
     assert "Δt = 0.074900 s" in window.graph.delta_label.text()
-    assert _value(panel, 0, 5) == "0"
-    assert not panel.view.isColumnHidden(2) and not panel.view.isColumnHidden(5)
+    assert _value(panel, 0, 6) == "0"
+    assert not panel.view.isColumnHidden(3) and not panel.view.isColumnHidden(6)
 
     tree.apply_filter("gear")
     assert not engine.isHidden() and rpm_item.isHidden() and not gear_item.isHidden()
@@ -338,7 +339,7 @@ def test_export_writes_every_selected_format_from_one_cut(window, log_files, tmp
     assert frames.arbitration_id.tolist() == [0x100] * 6
     assert frames.seconds()[0] == pytest.approx(0.0, abs=1e-6)
     assert (tmp_path / "cut.csv").is_file()
-    signals = tmp_path / "cut_signals.mat"
+    signals = tmp_path / "cut.mat"  # the name the user typed, with no format token
     assert signals.is_file()
     from scipy.io import loadmat
 
@@ -492,6 +493,49 @@ def test_fit_x_covers_the_log_and_fit_y_follows_the_visible_window(window, log_f
     window.cursor1_action.setChecked(True)
     assert window.graph._cursors[0][0].isVisible()
     window.hide()
+
+
+def test_switching_a_cursor_on_brings_it_to_the_middle_of_the_view(window, log_files):
+    from can_toolbox.canlog.refs import SignalRef
+
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    window.show()
+    window.graph._plots[0].setXRange(0.4, 0.8, padding=0)
+    low, high = window.graph.x_range()
+    centre = (low + high) / 2
+
+    window.cursor1_action.setChecked(False)
+    window.cursor1_action.setChecked(True)
+    assert window.graph.cursor_time[0] == pytest.approx(centre)
+    # The trace follows the cursor the way it follows a drag.
+    assert window.trace.currentIndex().isValid()
+
+    window.cursor2_action.setChecked(True)
+    assert window.graph.cursor_time[1] == pytest.approx(centre + (high - low) / 10)
+    assert window.graph.cursor_time[1] != window.graph.cursor_time[0]
+    window.hide()
+
+
+def test_cursor_width_setting_is_applied_to_the_cursor_lines(window, log_files, settings):
+    from can_toolbox.ui.settings_dialog import DEFAULT_CURSOR_WIDTH, cursor_width
+
+    assert cursor_width(settings) == DEFAULT_CURSOR_WIDTH
+    assert window.graph.cursor_width() == DEFAULT_CURSOR_WIDTH
+    _load(window, log_files[0])
+    window.plot_signal(window.signal_browser.tree.topLevelItem(0).child(0)
+                       .data(0, Qt.ItemDataRole.UserRole))
+
+    def widths():
+        return [line.pen.width() for lines in window.graph._cursors for line in lines]
+
+    assert widths() == [DEFAULT_CURSOR_WIDTH, DEFAULT_CURSOR_WIDTH]
+    window.graph.set_cursor_width(4)
+    assert widths() == [4, 4]
+    window.graph.set_cursor_width(9)  # clamped to the offered range
+    assert window.graph.cursor_width() == 4
+    settings.setValue("graph/cursor_width", 7)
+    assert cursor_width(settings) == DEFAULT_CURSOR_WIDTH  # an unknown value falls back
 
 
 def test_action_icons_follow_the_theme(window, app):
