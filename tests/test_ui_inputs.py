@@ -17,7 +17,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtCore import QSettings, Qt, QTimer
     from PySide6.QtGui import QColor, QPalette
-    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QDialog, QGroupBox, QLabel, QScrollArea
 except ImportError:
     HAS_QT = False
@@ -84,11 +83,14 @@ class GuiInputTests(unittest.TestCase):
         self.tab._saved_ecu_map = {"OldNode": "NewNode"}
         self.tab._saved_ecu_inputs = self.tab._current_inputs()
 
-    def _wait_until(self, condition):
-        deadline = time.monotonic() + 10
+    def _wait_until(self, condition, timeout=60):
+        # QTest.qWait keeps the GIL while it waits, which starves the worker
+        # thread on a slow runner; sleep releases it.
+        deadline = time.monotonic() + timeout
         while not condition() and time.monotonic() < deadline:
-            QTest.qWait(10)
-        self.assertTrue(condition(), "Qt worker did not complete within 10 seconds")
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertTrue(condition(), f"Qt worker did not complete within {timeout} seconds")
 
     def test_file_browse_selects_dbc_and_disables_manual_file_pairing(self):
         self._files()
