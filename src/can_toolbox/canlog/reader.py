@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from can_toolbox.canlog.table import (
 SUPPORTED_SUFFIXES = (".blf", ".asc", ".mf4", ".trc", ".log", ".csv")
 # What ``LogFile.format`` reports per suffix; BLF and CSV are named by their readers.
 _FORMAT_NAMES = {".asc": "ASC", ".mf4": "MF4", ".trc": "TRC", ".log": "candump"}
+# "can0", "vcan1", "slcan2": the bus number the interface name ends with.
+_TRAILING_NUMBER = re.compile(r"(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -116,9 +119,19 @@ def _channel_number(channel, named: dict[str, int]) -> int:
     name = str(channel).strip()
     if not name:
         return 0
-    if name.isdigit():
-        return int(name) + 1
-    return named.setdefault(name, len(named) + 1)
+    if name in named:
+        return named[name]
+    # candump names its bus, and the name carries the number: can0 is the first
+    # bus, vcan1 the second. A name without one is numbered in order of appearance,
+    # skipping whatever the numbered names have already claimed.
+    numbered = _TRAILING_NUMBER.search(name)
+    if numbered:
+        return named.setdefault(name, int(numbered.group(1)) + 1)
+    taken = set(named.values())
+    free = 1
+    while free in taken:
+        free += 1
+    return named.setdefault(name, free)
 
 
 def _dlc_code(message, length: int) -> int:

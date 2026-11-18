@@ -187,6 +187,20 @@ def test_candump_log_opens_and_names_its_buses(tmp_path):
     assert np.allclose(log.frames.seconds(), [0.25 * i for i in range(4)], atol=1e-6)
 
 
+def test_a_named_bus_keeps_the_number_in_its_name():
+    """candump calls the second bus can1 even when the first never appears."""
+    from can_toolbox.canlog.reader import _channel_number
+
+    named = {}
+    assert _channel_number("can1", named) == 2
+    assert _channel_number("vcan0", named) == 1
+    assert _channel_number("can1", named) == 2  # the same name keeps its channel
+    # A name with no number in it takes the lowest channel nothing else claimed.
+    assert _channel_number("pcan_usb", named) == 3
+    assert _channel_number(None, named) == 0
+    assert _channel_number(0, named) == 1  # python-can numbers its own channels from 0
+
+
 def _csv_source(tmp_path):
     messages = [
         can.Message(is_extended_id=False, timestamp=100.0, arbitration_id=0x100, data=b"\x01\x02", channel=0),
