@@ -2,11 +2,12 @@
 
 The window is the Log Viewer. **File** holds everything about the open log, **Tools**
 opens DBC Compare in its own window, and **Settings → Settings…** holds the language, the
-theme (follow Windows, Light or Dark), the graph line width and the MATLAB executable.
+theme (follow Windows, Light or Dark), the graph line and cursor widths and the MATLAB
+executable.
 
 ## Log Viewer
 
-1. **File → Open Log…** (Ctrl+O) or drop `.blf`, `.asc` or `.mf4` files on the window. Several files can be chosen or dropped at once; each one is read in turn, in the background, and **Cancel** stops the queue. **File → Recent Logs** reopens the last eight logs, and **Reload** (F5) reads the active one again.
+1. **File → Open Log…** (Ctrl+O) or drop `.blf`, `.asc`, `.mf4`, `.trc` (PEAK), `.log` (candump) or `.csv` files on the window. Several files can be chosen or dropped at once; each one is read in turn, in the background, and **Cancel** stops the queue. **File → Recent Logs** reopens the last eight logs, and **Reload** (F5) reads the active one again.
 2. Logs add up: the **Logs** tab beside the trace lists every open log with its duration, frames, channels and path, in bold for the active one. Double-click a row, or use **Set Active**, to show that log in the trace and the graph. Its menu also has **Export…**, **Reload** and **Close** (several rows at once). Every log keeps its frames in memory, so closing the ones you are done with frees it.
 3. The signal list does not change when you switch logs. A signal the active log does not carry is greyed out, with *not in this log* in its tooltip, and its lane is not drawn.
 4. **File → DBC Files…** adds databases and assign each to **All channels** or one CAN channel. A channel-specific DBC wins; dropping `.dbc` files on the window adds them for all channels.
@@ -25,10 +26,12 @@ Open **View → Signal Browser** — its own window, with a search box and **Cha
 until the next frame.
 
 The list beside the graph is what is plotted. Each row shows the signal in the colour of
-its curve, its value at **Cursor 1** and **Cursor 2**, and **Min**, **Max** and **Delta** —
-over the span between the cursors while measuring, otherwise over the time range on screen.
-Untick a row to keep a signal in the list without drawing it; the Cursor 2 and Delta columns
-appear with the second cursor, and the header's right-click menu hides the rest.
+its curve, its **Value** at cursor 1 — the name from the value table where the signal has
+one — the plain number behind it in **y**, its **Value2** at cursor 2, and **Min**, **Max**
+and **Delta** — over the span between the cursors while measuring, otherwise over the time
+range on screen. Rows are banded so a long list stays readable. Untick a row to keep a
+signal in the list without drawing it; the Value2 and Delta columns appear with the second
+cursor, and the header's right-click menu hides the rest.
 
 Group rows carry a tinted band across the whole row, so a group is easy to pick out.
 
@@ -46,7 +49,7 @@ The graph has its own toolbar:
 |---|---|
 | **Fit ▾** | Whole log on the time axis, then rescale every plot to it; the menu holds **Fit X** (time axis only) and **Fit Y** (plots only) |
 | **Zoom in / out** | Scale the time axis around cursor 1 |
-| **Cursor 1 / Cursor 2** | Show the main cursor and the measurement cursor |
+| **Cursor 1 / Cursor 2** | Show the main cursor and the measurement cursor; switching one on brings it to the middle of the view |
 | **◀ / ▶** | Move cursor 1 to the previous or next time the selected signal changes value |
 | **Remove plot / Clear** | Drop the selected plot, or all of them |
 | **Image ▾** | Save the plots as a PNG, or copy them to the clipboard |
@@ -70,13 +73,13 @@ project folder can be moved or shared.
 1. **Range:** the whole log, the span between the two graph cursors, or a from/to in seconds. Tick **Only frames shown in the trace** to apply the current filter. **Channel mapping** renumbers buses (`1=2, 2=1`), and **Time base** keeps the original times or restarts at 0.
 2. **Output formats:** BLF, ASC, MF4, CSV, **MAT frames**, **MAT signals**, **Simulink Dataset**. The two signal formats decode the cut and need definitions: the DBCs assigned in the viewer, a mapping config, an Excel template, or any combination.
 3. **Signal definitions:** a **Mapping config** (`.yaml`, `.yml`, `.json` or `.txt`) and an optional **Excel template**. **Save Excel template…** writes an empty workbook with the right columns; **Save upgraded config…** rewrites an older config in the current schema.
-4. **Output:** a folder and one file name. Each format adds its own extension; a Dataset is written as `<name>_dataset.mat`.
+4. **Output:** a folder and one file name, written exactly as you type it. Each format adds its own extension. MAT frames, MAT signals and a Dataset all write `<name>.mat`, so ticking more than one of them in a run leaves only the last.
 
 | Inputs | Files |
 |---|---|
 | No definitions | `<name>.mat` with a `Frames` struct, and whatever frame formats you ticked |
-| DBCs only | `<name>_signals.mat`: one group per message, its signals inside |
-| Mapping config or Excel template | `<name>_input.mat` and/or `<name>_output.mat` with the interfaces you declared |
+| DBCs only | `<name>.mat`: one group per message, its signals inside |
+| Mapping config or Excel template | `<name>.mat`, or `<name>_input.mat` and `<name>_output.mat` when you declared both sides |
 
 A BLF cut keeps CAN and CAN FD frames, error frames, channels, direction and nanosecond
 times. Markers, comments and non-CAN objects are not copied; **Log Info** names them.
