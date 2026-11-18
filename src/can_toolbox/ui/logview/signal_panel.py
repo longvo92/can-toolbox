@@ -367,13 +367,18 @@ class SignalPanel(QWidget):
     def plot_mode(self) -> bool:
         return self.signals.plot_mode
 
-    def set_plot_mode(self, enabled: bool) -> None:
+    def set_plot_mode(self, enabled: bool, entries=None) -> None:
         """CANoe's Ctrl+click behaviour: the selection is what the graph shows.
 
         Turning it on ticks every checkbox and stops them doing anything, so the
-        two ways of choosing lanes never fight over the same rows.
+        two ways of choosing lanes never fight over the same rows. ``entries``
+        names the rows to draw when the caller knows them — a workspace being
+        reopened — instead of reading a selection the rebuild may have cleared.
         """
-        self.signals.set_plot_mode(enabled, self.selected_entries())
+        chosen = self.selected_entries() if entries is None else list(entries)
+        self.signals.set_plot_mode(enabled, chosen)
+        if enabled and chosen:
+            self.select_entries(chosen)
 
     def select_entries(self, entries) -> None:
         """Select these rows, e.g. the ones a workspace had plotted."""

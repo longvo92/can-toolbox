@@ -8,7 +8,7 @@ under `## [Unreleased]` as they are merged; cutting a release moves them under a
 heading with its date. See [Build and Release](docs/architecture.md#build-and-release)
 for the procedure.
 
-## [Unreleased]
+## [2.1.0] - 2026-11-18
 
 ### Added
 
@@ -24,7 +24,7 @@ for the procedure.
 ### Changed
 
 - **Ctrl+click plot mode** no longer fights the checkboxes: while it is on, every signal is ticked and the ticks do nothing — the selected rows are what the graph draws. Turning it off gives the checkboxes the decision back.
-- Workspaces keep every open log and which one was active, plus the groups, the colour of each signal and what is hidden (format 3). Workspaces saved by 2.0 still open; their one log comes back as the only log, and their signals as one ungrouped list. Workspaces saved by 2.0 still open; their signals come back as one ungrouped list.
+- Workspaces keep every open log and which one was active, plus the groups, the colour of each signal and what is hidden (format 3). Workspaces saved by 2.0 still open: their one log comes back as the only log and their signals as one ungrouped list.
 - The filter bar lives in the Trace panel, where it belongs; it is always there instead of being a toolbar you switch on.
 - The window lost its toolbar: opening logs, DBCs, workspaces and Export are in **File**, and everything about the graph is on the graph.
 - Plots are shorter and name their signal on the left axis, in the colour of the curve, with a rule between lanes — so more signals fit on screen.
