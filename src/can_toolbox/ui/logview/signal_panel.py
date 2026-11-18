@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSettings, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QItemSelection,
+    QItemSelectionModel,
+    QModelIndex,
+    QSettings,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -102,12 +110,21 @@ class SignalTreeModel(QAbstractItemModel):
                 return f"{item.name}  ({len(item.entries)})"
             if role == Qt.ItemDataRole.CheckStateRole and column == 0:
                 return self._group_check_state(item)
+            if role == Qt.ItemDataRole.BackgroundRole:
+                # The whole row is tinted, so a group reads as a band, not a line.
+                return QBrush(QColor(self._theme.group_row))
+            if role == Qt.ItemDataRole.FontRole and column == 0:
+                font = QFont()
+                font.setBold(True)
+                return font
             return None
         if role == Qt.ItemDataRole.DisplayRole:
             if column == 0:
                 return item.ref.signal
             return self.values.get(id(item), ("", "", "", "", ""))[column - 1]
         if role == Qt.ItemDataRole.CheckStateRole and column == 0:
+            if self.signals.plot_mode:
+                return Qt.CheckState.Checked  # the selection decides instead
             return Qt.CheckState.Checked if item.visible else Qt.CheckState.Unchecked
         if role == Qt.ItemDataRole.ForegroundRole and column == 0:
             if id(item) in self.missing:
@@ -123,6 +140,8 @@ class SignalTreeModel(QAbstractItemModel):
         return None
 
     def _group_check_state(self, group: Group):
+        if self.signals.plot_mode:
+            return Qt.CheckState.Checked
         if not group.entries:
             return Qt.CheckState.Unchecked
         visible = sum(entry.visible for entry in group.entries)
@@ -133,6 +152,8 @@ class SignalTreeModel(QAbstractItemModel):
     def setData(self, index: QModelIndex, value, role=Qt.ItemDataRole.CheckStateRole) -> bool:
         if not index.isValid() or role != Qt.ItemDataRole.CheckStateRole or index.column():
             return False
+        if self.signals.plot_mode:
+            return False  # ticking a box means nothing while the selection decides
         checked = Qt.CheckState(value) == Qt.CheckState.Checked
         item = index.internalPointer()
         if isinstance(item, Group):
@@ -145,7 +166,7 @@ class SignalTreeModel(QAbstractItemModel):
         if not index.isValid():
             return Qt.ItemFlag.ItemIsDropEnabled
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
-        if not index.column():
+        if not index.column() and not self.signals.plot_mode:
             flags |= Qt.ItemFlag.ItemIsUserCheckable
         if isinstance(index.internalPointer(), Group):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
@@ -214,7 +235,6 @@ class SignalPanel(QWidget):
         self._binder = binder
         self._settings = settings
         self.signals = signals
-        self.plot_mode = False
         self.series_for: Callable[[object], object] | None = None
         self._cursors = (0.0, 0.0)
         self._measuring = False
@@ -340,19 +360,29 @@ class SignalPanel(QWidget):
 
     def _selection_changed(self, *_args) -> None:
         entries = self.selected_entries()
-        if self.plot_mode:
-            self.signals.show_only(entries)
+        self.signals.set_selection(entries)
         self.focus_changed.emit(entries[0].ref if entries else None)
 
-    def set_plot_mode(self, enabled: bool, *, apply: bool = True) -> None:
+    @property
+    def plot_mode(self) -> bool:
+        return self.signals.plot_mode
+
+    def set_plot_mode(self, enabled: bool) -> None:
         """CANoe's Ctrl+click behaviour: the selection is what the graph shows.
 
-        ``apply=False`` only sets the mode, for a workspace that stored it: the
-        visibility it saved stays as it is until the user selects something.
+        Turning it on ticks every checkbox and stops them doing anything, so the
+        two ways of choosing lanes never fight over the same rows.
         """
-        self.plot_mode = enabled
-        if enabled and apply:
-            self.signals.show_only(self.selected_entries())
+        self.signals.set_plot_mode(enabled, self.selected_entries())
+
+    def select_entries(self, entries) -> None:
+        """Select these rows, e.g. the ones a workspace had plotted."""
+        selection = QItemSelection()
+        for entry in entries:
+            index = self.model.index_of(entry)
+            selection.select(index, index.siblingAtColumn(len(COLUMNS) - 1))
+        mode = QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows
+        self.view.selectionModel().select(selection, mode)
 
     # -- menus ---------------------------------------------------------------------
 

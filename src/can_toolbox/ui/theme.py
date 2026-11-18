@@ -57,6 +57,8 @@ class Theme:
     check_disabled: str
     chevron: str
     alternate: str
+    # Group rows in the signal list: a band behind the whole row.
+    group_row: str
     link: str
     code_bg: str
     # Graphics: pyqtgraph paints these itself, so they never reach the stylesheet.
@@ -109,6 +111,7 @@ LIGHT = Theme(
     check_disabled="#9b9b9b",
     chevron="#3c3c3c",
     alternate="#f7f7f7",
+    group_row="#c6d4ec",
     link="#0a5ab0",
     code_bg="#f0f0f0",
     plot_bg="#ffffff",
@@ -158,6 +161,7 @@ DARK = Theme(
     check_disabled="#4d4d4d",
     chevron="#c0c0c0",
     alternate="#232323",
+    group_row="#374d6b",
     link="#6cb6ff",
     code_bg="#2a2a2a",
     plot_bg="#1e1e1e",

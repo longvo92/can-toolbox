@@ -75,6 +75,7 @@ def test_text_stays_readable_in_both_themes(theme):
         ("accent", "window", 3.0), ("error", "surface", 4.0), ("text", "alternate", 4.5),
         ("text", "accent_soft", 4.5), ("accent_text", "accent", 4.5), ("link", "surface", 4.0),
         ("text", "dock_title", 4.5), ("plot_fg", "plot_bg", 4.5), ("chevron", "surface", 3.0),
+        ("text", "group_row", 4.5),
     ):
         ratio = contrast(getattr(theme, token), getattr(theme, background))
         assert ratio >= minimum, f"{theme.name}: {token} on {background} is {ratio:.2f}:1"

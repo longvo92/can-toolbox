@@ -30,9 +30,13 @@ over the span between the cursors while measuring, otherwise over the time range
 Untick a row to keep a signal in the list without drawing it; the Cursor 2 and Delta columns
 appear with the second cursor, and the header's right-click menu hides the rest.
 
+Group rows carry a tinted band across the whole row, so a group is easy to pick out.
+
 Right-click the list for **Add Signals…**, **New Group**, **Rename**, **Delete**,
-**Move to Group**, **Expand/Collapse All** and **Ctrl+click plot mode**, where the selected
-rows are exactly what the graph draws. Drag rows to reorder them or to move them between
+**Move to Group**, **Expand/Collapse All** and **Ctrl+click plot mode**. In plot mode the
+selected rows are exactly what the graph draws: every checkbox is ticked and they stop doing
+anything, so the two ways of choosing lanes never fight. Switching the mode off hands the
+decision back to the checkboxes, with everything ticked. Drag rows to reorder them or to move them between
 groups, and press Delete to remove them. Sixteen lanes are drawn at a time; the list itself
 is not limited.
 
