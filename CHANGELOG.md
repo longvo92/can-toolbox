@@ -8,7 +8,7 @@ under `## [Unreleased]` as they are merged; cutting a release moves them under a
 heading with its date. See [Build and Release](docs/architecture.md#build-and-release)
 for the procedure.
 
-## [Unreleased]
+## [2.2.0] - 2026-11-18
 
 ### Added
 
