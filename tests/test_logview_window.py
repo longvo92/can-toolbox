@@ -910,3 +910,31 @@ def test_a_workspace_in_plot_mode_comes_back_drawing_the_same_signals(window, lo
         other.close()
         other.deleteLater()
         app.processEvents()
+
+
+def test_a_plot_mode_workspace_opens_in_a_window_already_in_plot_mode(window, log_files, tmp_path, legacy, app):
+    """The rebuild clears the view selection, so the rows must come from the workspace."""
+    from can_toolbox.canlog.refs import SignalRef
+
+    _load(window, log_files[0])
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+    window.plot_signal(SignalRef(1, 0x100, "Engine", "Gear"))
+    window.signal_panel.set_plot_mode(True, [window.signals.entries()[1]])
+    window.save_workspace(tmp_path / "plotmode2.json")
+    saved = tmp_path / "plotmode2.cantoolbox.json"
+
+    other = MainWindow(QSettings(str(tmp_path / "other2.ini"), QSettings.Format.IniFormat), legacy=legacy)
+    try:
+        other.plot_signal(SignalRef(1, 0x100, "Engine", "Rpm"))
+        other.signal_panel.set_plot_mode(True)  # already in plot mode before the workspace opens
+        other.open_workspace(saved)
+        wait_until(lambda: not other.is_busy() and len(other.signals.entries()) == 2)
+        assert other.signal_panel.plot_mode
+        assert [entry.ref.signal for entry in other.signals.visible_entries()] == ["Gear"]
+        assert [series.ref.signal for series in other.graph.series] == ["Gear"]
+        assert [entry.ref.signal for entry in other.signal_panel.selected_entries()] == ["Gear"]
+    finally:
+        other.wait_for_workers()
+        other.close()
+        other.deleteLater()
+        app.processEvents()

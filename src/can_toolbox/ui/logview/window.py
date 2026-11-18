@@ -922,12 +922,12 @@ class LogViewerWindow(QMainWindow):
         for plotted in workspace.signals:
             restore(plotted, None)
         if workspace.plot_mode:
-            # The checkboxes mean nothing in plot mode, so select what was drawn.
+            # The checkboxes mean nothing in plot mode, so hand the panel the
+            # rows that were drawn; a rebuild must not be able to lose them.
             drawn = [entry for entry in self.signals.entries() if entry.visible]
-            self.signal_panel.select_entries(drawn)
-            self.signal_panel.set_plot_mode(True)
+            self.signal_panel.set_plot_mode(True, drawn)
         else:
-            self.signal_panel.set_plot_mode(False)
+            self.signal_panel.set_plot_mode(False, [])
         self._refresh_graph()
         self.graph.restore_cursors(*workspace.cursors, workspace.measure)
         if missing:
