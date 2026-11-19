@@ -58,7 +58,8 @@ Tên signal nằm trên trục trái của từng plot, theo màu đường vẽ
 cursor bám vào sample gần nhất của plot đang kéo; giữ **Shift** để đặt tự do. Phím **←** /
 **→** đưa cursor 1 qua từng sample của signal đang chọn. Đoạn đường nét đứt nghĩa là mất
 sample: giá trị bị giữ lâu hơn 1,5 chu kỳ gửi (cycle time trong DBC, hoặc chu kỳ đo được);
-signal gửi theo sự kiện không bao giờ vẽ nét đứt. Khi bật
+signal gửi theo sự kiện không bao giờ vẽ nét đứt. Đoạn mất sample ngắn hơn vài pixel chỉ hiện khi
+phóng to. Khi bật
 **Cursor 2**, bảng readout hiện giá trị tại hai cursor, chênh lệch và Δt ở cuối toolbar.
 
 ### Workspace

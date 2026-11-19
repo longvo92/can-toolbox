@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pyqtgraph as pg
@@ -44,31 +45,68 @@ DEFAULT_CURSOR_WIDTH = 2
 MIN_SAMPLE_SPACING_PX = 4
 
 
-def step_path(times: np.ndarray, values: np.ndarray, gaps: np.ndarray):
-    """Sample-and-hold path through the samples, with the holds over ``gaps`` left out.
+# Without a laid-out view box (hidden, offscreen) curves are binned for this many columns.
+FALLBACK_COLUMNS = 1000
+# A missed-sample hold is dashed once it is this wide on screen; narrower, no dash
+# would show, and Qt spends seconds dashing thousands of sub-pixel stretches.
+MIN_DASH_PX = 6
 
-    Returns ``(x, y, connect)``: point ``2 i`` is sample ``i`` and point ``2 i + 1``
-    the end of its hold, so the hold of sample ``i`` is the segment from point
-    ``2 i`` to ``2 i + 1``. ``connect`` is ``"all"`` when nothing is cut out.
-    """
-    x = np.repeat(times, 2)[1:]
-    y = np.repeat(values, 2)[:-1]
+
+def visible_gaps(times: np.ndarray, gaps: np.ndarray, low: float, high: float, min_width: float) -> np.ndarray:
+    """The gaps whose hold reaches into ``low``..``high`` and spans ``min_width`` seconds or more."""
     if not len(gaps):
-        return x, y, "all"
-    connect = np.ones(len(x), dtype=bool)
-    connect[2 * gaps] = False
-    return x, y, connect
+        return gaps
+    begin, end = times[gaps], times[gaps + 1]
+    return gaps[(end > low) & (begin < high) & (end - begin >= min_width)]
+
+
+def display_path(times: np.ndarray, values: np.ndarray, gaps: np.ndarray,
+                 low: float, high: float, columns: int):
+    """``(x, y)`` for a ``stepMode="right"`` curve of what lies between ``low`` and ``high``.
+
+    The sample before ``low`` and the one after ``high`` are kept: their holds
+    cross the edges of the view. The hold of every gap sample is broken with a
+    NaN point, so a missed-sample stretch is never drawn solid (the dashed
+    item draws it). Beyond two samples per pixel column the samples are binned
+    by column, not by index: each column keeps its max, min and last value at
+    the time of its first sample, so a gap wider than a column stays a gap.
+    """
+    count = len(times)
+    if not count:
+        return np.zeros(0), np.zeros(0)
+    start = max(int(np.searchsorted(times, low, side="right")) - 1, 0)
+    stop = min(int(np.searchsorted(times, high, side="left")) + 1, count)
+    t, v = times[start:stop], values[start:stop]
+    # Gap samples whose next sample is in the slice; the hold of the last point is never drawn.
+    local = gaps[(gaps >= start) & (gaps < stop - 1)] - start
+    if len(t) <= 2 * columns or high <= low:
+        return np.insert(t, local + 1, t[local]), np.insert(v.astype(float), local + 1, np.nan)
+    column = np.clip(((t - low) * (columns / (high - low))).astype(np.int64), -1, columns)
+    firsts = np.concatenate(([0], np.flatnonzero(np.diff(column)) + 1))
+    lasts = np.append(firsts[1:], len(t)) - 1
+    x = np.repeat(t[firsts], 3)
+    y = np.empty(3 * len(firsts))
+    y[0::3] = np.maximum.reduceat(v, firsts)
+    y[1::3] = np.minimum.reduceat(v, firsts)
+    y[2::3] = v[lasts]
+    if not len(local):
+        return x, y
+    # One break per column holding a gap sample, at the last such sample.
+    bins = np.searchsorted(firsts, local, side="right") - 1
+    bins, last_gap = np.unique(bins[::-1], return_index=True)
+    breaks = local[len(local) - 1 - last_gap]
+    return np.insert(x, 3 * (bins + 1), t[breaks]), np.insert(y, 3 * (bins + 1), np.nan)
 
 
 def gap_path(times: np.ndarray, values: np.ndarray, gaps: np.ndarray):
-    """The holds over ``gaps`` as separate segments: ``(x, y, connect)`` in pairs."""
-    x = np.empty(2 * len(gaps))
-    y = np.empty(2 * len(gaps))
-    x[0::2], x[1::2] = times[gaps], times[gaps + 1]
-    y[0::2] = y[1::2] = values[gaps]
-    connect = np.zeros(len(x), dtype=bool)
-    connect[0::2] = True
-    return x, y, connect
+    """The holds over ``gaps`` and the step that ends them, NaN-separated: ``(x, y)``."""
+    x = np.empty(4 * len(gaps))
+    y = np.empty(4 * len(gaps))
+    x[0::4], x[1::4], x[2::4], x[3::4] = times[gaps], times[gaps + 1], times[gaps + 1], times[gaps + 1]
+    y[0::4] = y[1::4] = values[gaps]
+    y[2::4], y[3::4] = values[gaps + 1], np.nan
+    return x, y
+
 
 pg.setConfigOptions(antialias=False)
 
@@ -195,6 +233,15 @@ class _DropArea(pg.GraphicsLayoutWidget):
             event.acceptProposedAction()
 
 
+@dataclass
+class _Lane:
+    series: object  # SignalSeries
+    gaps: np.ndarray
+    curve: pg.PlotDataItem
+    dashed: pg.PlotDataItem | None
+    markers: pg.PlotDataItem
+
+
 class GraphPanel(QWidget):
     """Stacked plots, one per signal, sharing the time axis of the trace (seconds from the first frame)."""
 
@@ -225,7 +272,7 @@ class GraphPanel(QWidget):
         # when the signal list has no single signal selected.
         self._dragged_ref = None
         self._show_samples = True
-        self._markers: list = []  # one marker item (or None) per lane
+        self._lanes: list = []  # one _Lane (or None for an empty series) per plot
         self._theme = app_theme.current_theme()
         app_theme.manager.changed.connect(self.apply_theme)
 
@@ -385,7 +432,10 @@ class GraphPanel(QWidget):
             centre = self._view_centre()
             if centre is not None:
                 low, high = self.x_range()
-                self.cursor_time[1] = self._snap(centre + (high - low) / 10)
+                beside = centre + (high - low) / 10
+                snapped = self._snap(beside)
+                # Both on one sample would hide one line behind the other.
+                self.cursor_time[1] = beside if snapped == self.cursor_time[0] else snapped
         for line in self._cursors[1]:
             line.setValue(self.cursor_time[1])
             line.setVisible(enabled)
@@ -449,12 +499,14 @@ class GraphPanel(QWidget):
 
     def fit(self, duration: float = 0.0) -> None:
         """Fit X then Y; without a duration the plotted signals decide the time axis."""
-        if duration > 0:
-            self.fit_x(duration)
+        if duration <= 0:
+            # The curves hold only what is on screen, so the series decide the span.
+            spans = [(float(item.time[0]), float(item.time[-1])) for item in self.series if len(item.time)]
+            if spans and self._plots:
+                self._plots[0].setXRange(min(low for low, _ in spans), max(high for _, high in spans),
+                                         padding=0.02)
         else:
-            for plot in self._plots:
-                plot.enableAutoRange(axis="x")
-                plot.autoRange()
+            self.fit_x(duration)
         self.fit_y()
 
     def zoom(self, factor: float) -> None:
@@ -515,7 +567,7 @@ class GraphPanel(QWidget):
     def step_sample(self, *, forward: bool) -> bool:
         """Move cursor 1 to the next or previous sample of the signal being looked at."""
         series = self._stepping_series()
-        if series is None:
+        if series is None or not self._visible_cursors[0]:
             return False
         target = series.step_sample(self.cursor_time[0], forward=forward)
         if target is None:
@@ -540,7 +592,7 @@ class GraphPanel(QWidget):
         if shown == self._show_samples:
             return
         self._show_samples = shown
-        self._update_markers()
+        self._refresh_lanes()
         self.samples_toggled.emit(shown)
 
     def image(self) -> QImage:
@@ -610,7 +662,7 @@ class GraphPanel(QWidget):
         self.canvas.clear()
         self._plots = []
         self._cursors = [[], []]
-        self._markers = []
+        self._lanes = []
         first = None
         theme = self._theme
         for index, (entry, series) in enumerate(self.plotted):
@@ -636,14 +688,14 @@ class GraphPanel(QWidget):
                 top.setPen(pg.mkPen(theme.grid_line, width=1))
                 top.setStyle(showValues=False, tickLength=0)
                 plot.showAxis("top")
-            self._markers.append(self._add_curves(plot, series, color) if len(series.time) else None)
+            self._lanes.append(self._add_curves(plot, series, color) if len(series.time) else None)
             if first is None:
                 first = plot
                 plot.sigXRangeChanged.connect(
                     lambda _item, bounds: self.range_changed.emit(float(bounds[0]), float(bounds[1]))
                 )
-                plot.sigXRangeChanged.connect(self._update_markers)
-                plot.vb.sigResized.connect(self._update_markers)
+                plot.sigXRangeChanged.connect(self._refresh_lanes)
+                plot.vb.sigResized.connect(self._refresh_lanes)
             else:
                 plot.setXLink(first)
             if index < len(self.plotted) - 1:
@@ -662,52 +714,54 @@ class GraphPanel(QWidget):
             self._plots.append(plot)
         self._update_delta()
         self._show_canvas()
-        self._update_markers()
+        self._refresh_lanes()
 
-    def _add_curves(self, plot, series, color: str):
-        """Sample-and-hold curve of ``series``; holds over missed samples are dashed.
+    def _add_curves(self, plot, series, color: str) -> _Lane:
+        """Items of one lane; :meth:`_refresh_lanes` fills them with what is on screen.
 
-        Returns the item that carries the sample markers, filled by
-        :meth:`_update_markers` with what is on screen.
+        Only the visible slice is ever handed to pyqtgraph: its own downsampling
+        bins by index, which can draw a solid hold straight across a gap.
         """
-        times, values = series.time, series.values
         gaps = series.gaps()
-        x, y, connect = step_path(times, values, gaps)
-        curve = pg.PlotDataItem(x, y, connect=connect, pen=pg.mkPen(color, width=self._line_width))
-        # Clip and downsample only once the curve sits in its view box.
+        curve = pg.PlotDataItem(stepMode="right", pen=pg.mkPen(color, width=self._line_width))
         plot.addItem(curve)
-        curve.setClipToView(True)
-        curve.setDownsampling(auto=True, method="peak")
+        dashed = None
         if len(gaps):
-            x, y, connect = gap_path(times, values, gaps)
-            dashed = pg.PlotDataItem(x, y, connect=connect, pen=pg.mkPen(
-                color, width=self._line_width, style=Qt.PenStyle.DashLine))
+            dashed = pg.PlotDataItem(pen=pg.mkPen(color, width=self._line_width, style=Qt.PenStyle.DashLine))
             plot.addItem(dashed)
-            dashed.setClipToView(True)
         markers = pg.PlotDataItem(pen=None, symbol="s", symbolSize=3 + 2 * self._line_width,
                                   symbolPen=None, symbolBrush=color)
         plot.addItem(markers)
-        return markers
+        return _Lane(series, gaps, curve, dashed, markers)
 
-    def _update_markers(self, *_args) -> None:
-        """Put the markers of the samples on screen, or none when they would crowd.
+    def _refresh_lanes(self, *_args) -> None:
+        """Hand every lane the part of its series that is on screen.
 
-        Markers are filled from the visible slice only: a scatter of a whole
-        long log is slow to build and unreadable anyway.
+        Markers come only while samples sit at least :data:`MIN_SAMPLE_SPACING_PX`
+        apart: denser, they merge into a bar and cost a lot to draw.
         """
         if not self._plots:
             return
         low, high = self.x_range()
-        for plot, series, markers in zip(self._plots, self.series, self._markers):
-            if markers is None:
+        for plot, lane in zip(self._plots, self._lanes):
+            if lane is None:
                 continue
-            start = int(np.searchsorted(series.time, low, side="left"))
-            stop = int(np.searchsorted(series.time, high, side="right"))
             width = float(plot.vb.width())
+            columns = int(width) if width >= 1 else FALLBACK_COLUMNS
+            times, values = lane.series.time, lane.series.values
+            # Only gaps wide enough to show a dash break the solid curve; narrower ones
+            # are below a pixel or two and stay solid until the user zooms in.
+            span = high - low
+            gaps = visible_gaps(times, lane.gaps, low, high, MIN_DASH_PX * span / columns) if span > 0 else lane.gaps
+            lane.curve.setData(*display_path(times, values, gaps, low, high, columns))
+            if lane.dashed is not None:
+                lane.dashed.setData(*gap_path(times, values, gaps))
+            start = int(np.searchsorted(times, low, side="left"))
+            stop = int(np.searchsorted(times, high, side="right"))
             if self._show_samples and stop > start and (stop - start) * MIN_SAMPLE_SPACING_PX <= width:
-                markers.setData(series.time[start:stop], series.values[start:stop])
+                lane.markers.setData(times[start:stop], values[start:stop])
             else:
-                markers.setData([], [])
+                lane.markers.setData([], [])
 
     def _label_lane(self, plot, series, color: str) -> None:
         """Name the lane on its left axis, elided to the height it has.
@@ -736,9 +790,7 @@ class GraphPanel(QWidget):
             if lane < len(self.series):
                 series = self.series[lane]
                 self._dragged_ref = series.ref
-                nearest = series.nearest_sample(seconds)
-                if nearest is not None:
-                    seconds = nearest
+                seconds = self._snap(seconds, series)
         self._syncing = True
         try:
             self.cursor_time[cursor] = seconds
@@ -758,12 +810,13 @@ class GraphPanel(QWidget):
             series = next((item for item in self.series if item.ref == self._dragged_ref), None)
         return series
 
-    def _snap(self, seconds: float) -> float:
-        """``seconds`` moved onto the nearest sample of the signal being looked at.
+    def _snap(self, seconds: float, series=None) -> float:
+        """``seconds`` moved onto the nearest sample of ``series`` (default: the one looked at).
 
         A sample off screen is no snap target: the cursor stays where the user looks.
         """
-        series = self._stepping_series() or next((item for item in self.series if len(item.time)), None)
+        if series is None:
+            series = self._stepping_series() or next((item for item in self.series if len(item.time)), None)
         nearest = series.nearest_sample(seconds) if series is not None else None
         low, high = self.x_range()
         return nearest if nearest is not None and low <= nearest <= high else seconds

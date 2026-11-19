@@ -97,10 +97,19 @@ class SignalSeries:
         return float(earlier[-1]) if len(earlier) else None
 
     def gaps(self, factor: float = GAP_FACTOR) -> np.ndarray:
-        """Indices ``i`` whose hold up to sample ``i + 1`` is longer than ``factor`` periods."""
+        """Indices ``i`` whose hold up to sample ``i + 1`` means samples went missing.
+
+        A hold counts when it is longer than ``factor`` periods, unless the next
+        interval makes up for it: a late frame followed by an early one is jitter,
+        not a lost frame.
+        """
         if self.period is None or self.period <= 0 or len(self.time) < 2:
             return np.zeros(0, np.int64)
-        return np.flatnonzero(np.diff(self.time) > factor * self.period)
+        intervals = np.diff(self.time)
+        long = intervals > factor * self.period
+        # A late frame shifts the next interval down: together they still span two periods.
+        paired = np.append(intervals[:-1] + intervals[1:], np.inf)
+        return np.flatnonzero(long & (paired > (factor + 1) * self.period))
 
     def nearest_sample(self, seconds: float) -> float | None:
         """Time of the sample closest to ``seconds``; the earlier one on a tie."""
@@ -218,10 +227,15 @@ class SignalSource:
 def _signal_period(message, signal, times: np.ndarray) -> float | None:
     """The period a signal is expected at: the DBC cycle time, else the measured one.
 
-    A multiplexed signal rides only in the frames that select it, so the
-    message cycle time says nothing about it; its own intervals do.
+    The DBC cycle time counts only when the log agrees with it, i.e. most
+    intervals are no longer than a gap: cantools also hands out the database
+    default ``GenMsgCycleTime`` for event-driven messages, which would dash
+    every hold between their events. A multiplexed signal rides only in the
+    frames that select it, so the message cycle time says nothing about it.
     """
     cycle_ms = getattr(message, "cycle_time", None)
     if cycle_ms and cycle_ms > 0 and getattr(signal, "multiplexer_ids", None) is None:
-        return float(cycle_ms) / 1000.0
+        cycle = float(cycle_ms) / 1000.0
+        if len(times) < 2 or float(np.median(np.diff(times))) <= GAP_FACTOR * cycle:
+            return cycle
     return estimate_period(times)

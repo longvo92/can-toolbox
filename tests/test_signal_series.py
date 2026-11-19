@@ -155,9 +155,13 @@ def test_dbc_cycle_time_wins_unless_the_signal_is_multiplexed():
     from can_toolbox.canlog.signals import _signal_period
 
     times = np.arange(10) * 0.02
-    message = SimpleNamespace(cycle_time=10)
-    assert _signal_period(message, SimpleNamespace(multiplexer_ids=None), times) == pytest.approx(0.01)
-    assert _signal_period(message, SimpleNamespace(multiplexer_ids=[1]), times) == pytest.approx(0.02)
+    message = SimpleNamespace(cycle_time=20)
+    # A cycle time the log agrees with wins even where the measured period is off.
+    jittery = times + np.array([0, 0.004, -0.004, 0.004, -0.004, 0.004, -0.004, 0.004, -0.004, 0])
+    assert _signal_period(message, SimpleNamespace(multiplexer_ids=None), jittery) == pytest.approx(0.02)
+    # A multiplexed signal comes every other frame: its own period counts.
+    assert _signal_period(SimpleNamespace(cycle_time=10), SimpleNamespace(multiplexer_ids=[1]),
+                          times) == pytest.approx(0.02)
     assert _signal_period(SimpleNamespace(cycle_time=None), SimpleNamespace(multiplexer_ids=None),
                           times) == pytest.approx(0.02)
     assert _signal_period(SimpleNamespace(cycle_time=0), SimpleNamespace(multiplexer_ids=None),
@@ -185,3 +189,26 @@ def test_nearest_and_stepped_samples():
     assert series.step_sample(0.4, forward=True) is None
     assert series.step_sample(0.0, forward=False) is None
     assert _series([]).nearest_sample(0.0) is None and _series([]).step_sample(0.0) is None
+
+
+def test_a_late_frame_is_jitter_not_a_gap():
+    # 2 ms period, one frame 1.1 ms late: 3.1 ms then 0.9 ms; no frame was lost.
+    late = _series([0.0, 0.002, 0.004, 0.0071, 0.008, 0.010], period=0.002)
+    assert late.gaps().tolist() == []
+    # A lost frame leaves two periods of hold whatever follows.
+    lost = _series([0.0, 0.002, 0.004, 0.008, 0.010, 0.012], period=0.002)
+    assert lost.gaps().tolist() == [2]
+
+
+def test_a_default_cycle_time_does_not_dash_event_messages():
+    from types import SimpleNamespace
+
+    from can_toolbox.canlog.signals import _signal_period
+
+    # cantools reports the database default GenMsgCycleTime for an event message too.
+    events = np.array([0.0, 0.05, 0.9, 1.0, 2.7, 2.75, 4.0])
+    plain = SimpleNamespace(multiplexer_ids=None)
+    assert _signal_period(SimpleNamespace(cycle_time=10), plain, events) is None
+    # A periodic message keeps its DBC cycle time, losses included.
+    periodic = np.delete(np.arange(50) * 0.01, [10, 11, 12, 30])
+    assert _signal_period(SimpleNamespace(cycle_time=10), plain, periodic) == pytest.approx(0.01)

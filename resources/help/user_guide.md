@@ -61,7 +61,7 @@ frame moves the cursor. A dragged cursor snaps to the nearest sample of the plot
 dragged in; hold **Shift** to place it freely. **←** / **→** step cursor 1 one sample of the
 selected signal at a time. A dashed stretch of curve means samples went missing: the hold
 lasted more than 1.5 send periods (the DBC cycle time, or the measured one); signals sent on
-event are never dashed. With **Cursor 2** on, the readout lists the value at each cursor,
+event are never dashed. Zoom in to see a missed stretch shorter than a few pixels. With **Cursor 2** on, the readout lists the value at each cursor,
 their difference and Δt, shown at the end of the toolbar.
 
 ### Workspaces

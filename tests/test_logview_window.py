@@ -6,6 +6,7 @@ import json
 import os
 import time
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1021,15 +1022,16 @@ def test_graph_marks_samples_and_dashes_the_missed_ones(window, gappy_log, monke
     assert series.gaps().tolist() == [9]
 
     curve, dashed, markers = _lane_items(graph)
-    # The solid curve skips the hold over the gap, which the dashed item draws instead.
-    assert curve.opts["pen"].style() == Qt.PenStyle.SolidLine
-    assert not curve.opts["connect"][18] and curve.opts["connect"][17] and curve.opts["connect"][19]
-    assert dashed.opts["pen"].style() == Qt.PenStyle.DashLine
-    assert dashed.xData.tolist() == pytest.approx([0.09, 0.15])
-    assert dashed.yData.tolist() == pytest.approx([9 * 0.25, 9 * 0.25])
-
     graph._plots[0].setXRange(0.0, 0.3, padding=0)
     QApplication.processEvents()
+    # The solid curve breaks the hold over the gap, which the dashed item draws instead.
+    assert curve.opts["pen"].style() == Qt.PenStyle.SolidLine
+    assert curve.xData[9:12].tolist() == pytest.approx([0.09, 0.09, 0.15])
+    assert curve.yData[9] == pytest.approx(9 * 0.25) and np.isnan(curve.yData[10])
+    assert np.isfinite(np.delete(curve.yData, 10)).all()
+    assert dashed.opts["pen"].style() == Qt.PenStyle.DashLine
+    assert dashed.xData.tolist() == pytest.approx([0.09, 0.15, 0.15, 0.15])
+    assert dashed.yData[:3].tolist() == pytest.approx([9 * 0.25, 9 * 0.25, 15 * 0.25])
     assert markers.xData.tolist() == pytest.approx(series.time.tolist())
     graph._plots[0].setXRange(0.045, 0.205, padding=0)
     QApplication.processEvents()
@@ -1037,7 +1039,7 @@ def test_graph_marks_samples_and_dashes_the_missed_ones(window, gappy_log, monke
 
     # Too dense to read: no markers; switched off: none either, and the choice is kept.
     monkeypatch.setattr(graphics, "MIN_SAMPLE_SPACING_PX", 10_000)
-    graph._update_markers()
+    graph._refresh_lanes()
     assert len(markers.xData if markers.xData is not None else []) == 0
     monkeypatch.setattr(graphics, "MIN_SAMPLE_SPACING_PX", 4)
     graph.samples_action.trigger()
@@ -1091,3 +1093,43 @@ def test_dragged_cursor_snaps_to_samples_unless_shift_is_held(window, log_files,
     low, high = graph.x_range()
     assert graph.cursor_time[0] == pytest.approx(0.03) and high == pytest.approx(0.03)
     assert high - low == pytest.approx(0.025)
+
+
+def test_snapping_never_pulls_a_cursor_off_screen_or_onto_the_other(window, log_files):
+    from PySide6.QtTest import QTest
+
+    window.show()
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+    graph = window.graph
+    QApplication.processEvents()
+
+    # Past the last sample (0.39 s) a drag places the cursor where the pointer is.
+    graph._plots[0].setXRange(0.5, 0.9, padding=0)
+    line = graph._cursors[0][0]
+    line.moving = True
+    line.setValue(0.7)
+    line.moving = False
+    assert graph.cursor_time[0] == pytest.approx(0.7)
+
+    # Cursor 2 lands beside cursor 1, never on the same sample.
+    graph._plots[0].setXRange(0.0, 0.01, padding=0)
+    graph.set_cursor(0.0)
+    window.cursor2_action.setChecked(True)
+    assert graph.cursor_time[1] != graph.cursor_time[0]
+    window.cursor2_action.setChecked(False)
+
+    # Real arrow keys on the plot step cursor 1; a hidden cursor stays put.
+    graph._plots[0].setXRange(0.0, 0.4, padding=0)
+    graph.set_cursor(0.1)
+    graph.set_focus_ref(graph.series[0].ref)
+    window.activateWindow()
+    graph.canvas.setFocus()
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Right)
+    assert graph.cursor_time[0] == pytest.approx(0.11)
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Left)
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Left)
+    assert graph.cursor_time[0] == pytest.approx(0.09)
+    window.cursor1_action.setChecked(False)
+    assert not graph.step_sample(forward=True) and graph.cursor_time[0] == pytest.approx(0.09)

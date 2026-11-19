@@ -12,7 +12,7 @@ for the procedure.
 
 ### Added
 
-- **Sample dots and missed samples on the graph.** Every sample is marked with a dot while the zoom leaves room for them (**Show samples** on the graph toolbar turns them off). A hold longer than 1.5 send periods is drawn dashed, so lost frames stand out; the period is the DBC cycle time, or the measured one when the DBC has none. Signals sent on event are never dashed.
+- **Sample dots and missed samples on the graph.** Every sample is marked with a dot while the zoom leaves room for them (**Show samples** on the graph toolbar turns them off). A hold longer than 1.5 send periods is drawn dashed, so lost frames stand out; a late frame that the next one makes up for is not counted. The period is the DBC cycle time when the log agrees with it, otherwise the measured one; signals sent on event are never dashed. A missed stretch shorter than a few pixels shows once you zoom in.
 - **Cursors land on samples.** Dragging a cursor snaps it to the nearest sample of the plot it is dragged in; hold **Shift** to place it freely. **←** / **→** step cursor 1 one sample at a time.
 
 ## [2.2.0] - 2026-11-18
