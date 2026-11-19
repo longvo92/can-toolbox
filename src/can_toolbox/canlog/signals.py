@@ -10,11 +10,33 @@ from can_toolbox.canlog.decode import MessageCodec, rows_by_message
 from can_toolbox.canlog.refs import SignalRef
 from can_toolbox.canlog.view import LogView
 
-__all__ = ["CatalogEntry", "SignalRef", "SignalSeries", "SignalSource"]
+__all__ = ["GAP_FACTOR", "CatalogEntry", "SignalRef", "SignalSeries", "SignalSource", "estimate_period"]
 
 # Half a microsecond: closer than any CAN timestamp, so a cursor sitting exactly
 # on a change still steps to the next one.
 _CHANGE_EPSILON = 5e-7
+# A hold longer than this many periods means samples went missing on the bus.
+GAP_FACTOR = 1.5
+# Measured intervals count as periodic when this share of them sits within
+# half a period of the median; event-driven messages fall well short of it.
+_REGULAR_SHARE = 0.8
+_MIN_INTERVALS = 3
+
+
+def estimate_period(times: np.ndarray) -> float | None:
+    """The send period of a sorted time column, or ``None`` when it is not periodic.
+
+    The median interval is the period when most intervals sit close to it; a few
+    long ones (the missed samples this is used to find) do not move it.
+    """
+    if len(times) < _MIN_INTERVALS + 1:
+        return None
+    intervals = np.diff(times)
+    median = float(np.median(intervals))
+    if median <= 0:
+        return None
+    regular = np.count_nonzero(np.abs(intervals - median) <= median / 2)
+    return median if regular >= _REGULAR_SHARE * len(intervals) else None
 
 
 @dataclass(frozen=True)
@@ -29,6 +51,8 @@ class SignalSeries:
     maximum: float | None = None
     scale: float = 1.0
     offset: float = 0.0
+    # Nominal send period in seconds; ``None`` for event-driven signals, which have no gaps.
+    period: float | None = None
 
     def value_at(self, seconds: float) -> float | None:
         """Sample-and-hold value at ``seconds``; ``None`` before the first sample."""
@@ -71,6 +95,43 @@ class SignalSeries:
             return float(later[0]) if len(later) else None
         earlier = times[times < seconds - _CHANGE_EPSILON]
         return float(earlier[-1]) if len(earlier) else None
+
+    def gaps(self, factor: float = GAP_FACTOR) -> np.ndarray:
+        """Indices ``i`` whose hold up to sample ``i + 1`` means samples went missing.
+
+        A hold counts when it is longer than ``factor`` periods, unless the next
+        interval makes up for it: a late frame followed by an early one is jitter,
+        not a lost frame.
+        """
+        if self.period is None or self.period <= 0 or len(self.time) < 2:
+            return np.zeros(0, np.int64)
+        intervals = np.diff(self.time)
+        long = intervals > factor * self.period
+        # A late frame shifts the next interval down: together they still span two periods.
+        paired = np.append(intervals[:-1] + intervals[1:], np.inf)
+        return np.flatnonzero(long & (paired > (factor + 1) * self.period))
+
+    def nearest_sample(self, seconds: float) -> float | None:
+        """Time of the sample closest to ``seconds``; the earlier one on a tie."""
+        if not len(self.time):
+            return None
+        index = int(np.searchsorted(self.time, seconds))
+        if index <= 0:
+            return float(self.time[0])
+        if index >= len(self.time):
+            return float(self.time[-1])
+        before, after = float(self.time[index - 1]), float(self.time[index])
+        return before if seconds - before <= after - seconds else after
+
+    def step_sample(self, seconds: float, *, forward: bool = True) -> float | None:
+        """Time of the next (or previous) sample, ``None`` past the last (or first) one."""
+        if not len(self.time):
+            return None
+        if forward:
+            index = int(np.searchsorted(self.time, seconds + _CHANGE_EPSILON, side="right"))
+            return float(self.time[index]) if index < len(self.time) else None
+        index = int(np.searchsorted(self.time, seconds - _CHANGE_EPSILON, side="left")) - 1
+        return float(self.time[index]) if index >= 0 else None
 
     def text_at(self, seconds: float) -> str:
         value = self.value_at(seconds)
@@ -142,6 +203,7 @@ class SignalSource:
         signal = codec.message.get_signal_by_name(ref.signal)
         choices = {int(raw): str(text) for raw, text in (signal.conversion.choices or {}).items()}
         return SignalSeries(
+            period=_signal_period(codec.message, signal, times),
             ref=ref,
             time=times,
             values=values,
@@ -160,3 +222,20 @@ class SignalSource:
             rows = rows[self.view.frames.channel[rows] == channel]
             self._decoded[cache_key] = codec.decode(self.view.frames, rows)
         return self._decoded[cache_key]
+
+
+def _signal_period(message, signal, times: np.ndarray) -> float | None:
+    """The period a signal is expected at: the DBC cycle time, else the measured one.
+
+    The DBC cycle time counts only when the log agrees with it, i.e. most
+    intervals are no longer than a gap: cantools also hands out the database
+    default ``GenMsgCycleTime`` for event-driven messages, which would dash
+    every hold between their events. A multiplexed signal rides only in the
+    frames that select it, so the message cycle time says nothing about it.
+    """
+    cycle_ms = getattr(message, "cycle_time", None)
+    if cycle_ms and cycle_ms > 0 and getattr(signal, "multiplexer_ids", None) is None:
+        cycle = float(cycle_ms) / 1000.0
+        if len(times) < 2 or float(np.median(np.diff(times))) <= GAP_FACTOR * cycle:
+            return cycle
+    return estimate_period(times)

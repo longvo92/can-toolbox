@@ -51,12 +51,17 @@ The graph has its own toolbar:
 | **Zoom in / out** | Scale the time axis around cursor 1 |
 | **Cursor 1 / Cursor 2** | Show the main cursor and the measurement cursor; switching one on brings it to the middle of the view |
 | **◀ / ▶** | Move cursor 1 to the previous or next time the selected signal changes value |
+| **Show samples** | Mark every sample with a dot, when the zoom leaves room for them |
 | **Remove plot / Clear** | Drop the selected plot, or all of them |
 | **Image ▾** | Save the plots as a PNG, or copy them to the clipboard |
 
 Each plot is named on its left axis, in the colour of its curve; the full name and unit are
 in its tooltip. Moving a cursor selects the matching frame in the trace, and selecting a
-frame moves the cursor. With **Cursor 2** on, the readout lists the value at each cursor,
+frame moves the cursor. A dragged cursor snaps to the nearest sample of the plot it is
+dragged in; hold **Shift** to place it freely. **←** / **→** step cursor 1 one sample of the
+selected signal at a time. A dashed stretch of curve means samples went missing: the hold
+lasted more than 1.5 send periods (the DBC cycle time, or the measured one); signals sent on
+event are never dashed. Zoom in to see a missed stretch shorter than a few pixels. With **Cursor 2** on, the readout lists the value at each cursor,
 their difference and Δt, shown at the end of the toolbar.
 
 ### Workspaces

@@ -6,6 +6,7 @@ import json
 import os
 import time
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -681,7 +682,7 @@ def test_graph_toolbar_holds_the_window_actions_and_its_own(window, log_files):
     graph = window.graph
     names = [action.property("iconName") for action in graph.toolbar.actions() if action.property("iconName")]
     assert names == ["zoom-in", "zoom-out", "cursor-1", "cursor-2", "prev-change", "next-change",
-                     "remove-plot", "clear-graph"]
+                     "samples", "remove-plot", "clear-graph"]
     assert graph.fit_button.defaultAction() is window.fit_action
     assert [action.property("iconName") for action in graph.fit_button.menu().actions()] == ["fit", "fit-x", "fit-y"]
     assert [action.text() for action in graph.image_button.menu().actions()] == ["Save Image…", "Copy Image"]
@@ -724,12 +725,13 @@ def test_line_width_setting_is_applied_to_the_curves(window, log_files, settings
     window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
 
     def pens():
-        return [item.opts["pen"].width() for plot in window.graph._plots
-                for item in plot.listDataItems()]
+        # The sample markers have no pen; their size follows the line width instead.
+        return [item.opts["pen"].width() if item.opts["pen"] is not None else item.opts["symbolSize"]
+                for plot in window.graph._plots for item in plot.listDataItems()]
 
-    assert pens() == [DEFAULT_LINE_WIDTH]
+    assert pens() == [DEFAULT_LINE_WIDTH, 3 + 2 * DEFAULT_LINE_WIDTH]
     window.graph.set_line_width(4)
-    assert pens() == [4]
+    assert pens() == [4, 11]
     window.graph.set_line_width(9)  # clamped to the offered range
     assert window.graph.line_width() == 4
     settings.setValue("graph/line_width", 7)
@@ -982,3 +984,152 @@ def test_a_plot_mode_workspace_opens_in_a_window_already_in_plot_mode(window, lo
         other.close()
         other.deleteLater()
         app.processEvents()
+
+
+@pytest.fixture
+def gappy_log(tmp_path, log_files):
+    """Engine every 10 ms, with the frames from 0.10 s to 0.14 s missing."""
+    blf = tmp_path / "gappy.blf"
+    with can.BLFWriter(blf) as writer:
+        for index in range(30):
+            if 10 <= index <= 14:
+                continue
+            writer.on_message_received(can.Message(
+                timestamp=1_700_000_000 + index * 0.01, arbitration_id=0x100, is_extended_id=False,
+                data=bytes([index, 0, 0, 0, 0, 0, 0, 0]), channel=0,
+            ))
+    return blf
+
+
+def _lane_items(graph, lane=0):
+    import pyqtgraph as pg
+
+    return [item for item in graph._plots[lane].listDataItems() if isinstance(item, pg.PlotDataItem)]
+
+
+def test_graph_marks_samples_and_dashes_the_missed_ones(window, gappy_log, monkeypatch):
+    from can_toolbox.ui import graphics
+
+    window.show()
+    window.resize(1400, 900)
+    _load(window, gappy_log)
+    rpm = window.signal_browser.tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole)
+    window.plot_signal(rpm)
+    graph = window.graph
+    QApplication.processEvents()
+    series = graph.series[0]
+    assert series.period == pytest.approx(0.01)
+    assert series.gaps().tolist() == [9]
+
+    curve, dashed, markers = _lane_items(graph)
+    graph._plots[0].setXRange(0.0, 0.3, padding=0)
+    QApplication.processEvents()
+    # The solid curve breaks the hold over the gap, which the dashed item draws instead.
+    assert curve.opts["pen"].style() == Qt.PenStyle.SolidLine
+    assert curve.xData[9:12].tolist() == pytest.approx([0.09, 0.09, 0.15])
+    assert curve.yData[9] == pytest.approx(9 * 0.25) and np.isnan(curve.yData[10])
+    assert np.isfinite(np.delete(curve.yData, 10)).all()
+    assert dashed.opts["pen"].style() == Qt.PenStyle.DashLine
+    assert dashed.xData.tolist() == pytest.approx([0.09, 0.15, 0.15, 0.15])
+    assert dashed.yData[:3].tolist() == pytest.approx([9 * 0.25, 9 * 0.25, 15 * 0.25])
+    assert markers.xData.tolist() == pytest.approx(series.time.tolist())
+    graph._plots[0].setXRange(0.045, 0.205, padding=0)
+    QApplication.processEvents()
+    assert markers.xData.tolist() == pytest.approx([0.05, 0.06, 0.07, 0.08, 0.09, 0.15, 0.16, 0.17, 0.18, 0.19, 0.2])
+
+    # Too dense to read: no markers; switched off: none either, and the choice is kept.
+    monkeypatch.setattr(graphics, "MIN_SAMPLE_SPACING_PX", 10_000)
+    graph._refresh_lanes()
+    assert len(markers.xData if markers.xData is not None else []) == 0
+    monkeypatch.setattr(graphics, "MIN_SAMPLE_SPACING_PX", 4)
+    graph.samples_action.trigger()
+    assert not graph.show_samples() and len(markers.xData if markers.xData is not None else []) == 0
+    assert window._settings.value("graph/show_samples", type=bool) is False
+    graph.samples_action.trigger()
+    assert graph.show_samples() and len(markers.xData) == 11
+
+
+def test_dragged_cursor_snaps_to_samples_unless_shift_is_held(window, log_files, monkeypatch):
+    from PySide6.QtWidgets import QApplication as QtApplication
+
+    from can_toolbox.ui import graphics
+
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+    graph = window.graph
+    line = graph._cursors[0][0]
+
+    line.moving = True  # what a mouse drag sets
+    line.setValue(0.0251)
+    assert graph.cursor_time[0] == pytest.approx(0.03) and line.value() == pytest.approx(0.03)
+    assert window.trace.currentIndex().row() == 6  # the Engine frame at 0.03 s
+
+    monkeypatch.setattr(graphics.QApplication, "keyboardModifiers",
+                        staticmethod(lambda: Qt.KeyboardModifier.ShiftModifier))
+    line.setValue(0.0251)
+    assert graph.cursor_time[0] == pytest.approx(0.0251)
+    monkeypatch.setattr(graphics.QApplication, "keyboardModifiers", QtApplication.keyboardModifiers)
+    line.moving = False
+
+    # A value set from code (trace, workspace) is not moved.
+    line.setValue(0.0123)
+    assert graph.cursor_time[0] == pytest.approx(0.0123)
+
+    # The arrow keys walk the lane the cursor was last dragged in, sample by sample.
+    assert graph.next_sample_action.shortcut().toString() == "Right"
+    assert graph.prev_sample_action.shortcut().toString() == "Left"
+    graph.next_sample_action.trigger()
+    assert graph.cursor_time[0] == pytest.approx(0.02)
+    graph.next_sample_action.trigger()
+    assert graph.cursor_time[0] == pytest.approx(0.03)
+    assert window.trace.currentIndex().row() == 6
+    graph.prev_sample_action.trigger()
+    assert graph.cursor_time[0] == pytest.approx(0.02)
+
+    # Stepping past the edge of the view pans it along.
+    graph._plots[0].setXRange(0.0, 0.025, padding=0)
+    graph.next_sample_action.trigger()
+    low, high = graph.x_range()
+    assert graph.cursor_time[0] == pytest.approx(0.03) and high == pytest.approx(0.03)
+    assert high - low == pytest.approx(0.025)
+
+
+def test_snapping_never_pulls_a_cursor_off_screen_or_onto_the_other(window, log_files):
+    from PySide6.QtTest import QTest
+
+    window.show()
+    _load(window, log_files[0])
+    tree = window.signal_browser.tree
+    window.plot_signal(tree.topLevelItem(0).child(0).data(0, Qt.ItemDataRole.UserRole))
+    graph = window.graph
+    QApplication.processEvents()
+
+    # Past the last sample (0.39 s) a drag places the cursor where the pointer is.
+    graph._plots[0].setXRange(0.5, 0.9, padding=0)
+    line = graph._cursors[0][0]
+    line.moving = True
+    line.setValue(0.7)
+    line.moving = False
+    assert graph.cursor_time[0] == pytest.approx(0.7)
+
+    # Cursor 2 lands beside cursor 1, never on the same sample.
+    graph._plots[0].setXRange(0.0, 0.01, padding=0)
+    graph.set_cursor(0.0)
+    window.cursor2_action.setChecked(True)
+    assert graph.cursor_time[1] != graph.cursor_time[0]
+    window.cursor2_action.setChecked(False)
+
+    # Real arrow keys on the plot step cursor 1; a hidden cursor stays put.
+    graph._plots[0].setXRange(0.0, 0.4, padding=0)
+    graph.set_cursor(0.1)
+    graph.set_focus_ref(graph.series[0].ref)
+    window.activateWindow()
+    graph.canvas.setFocus()
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Right)
+    assert graph.cursor_time[0] == pytest.approx(0.11)
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Left)
+    QTest.keyClick(graph.canvas, Qt.Key.Key_Left)
+    assert graph.cursor_time[0] == pytest.approx(0.09)
+    window.cursor1_action.setChecked(False)
+    assert not graph.step_sample(forward=True) and graph.cursor_time[0] == pytest.approx(0.09)

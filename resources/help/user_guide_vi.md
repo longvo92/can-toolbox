@@ -49,11 +49,17 @@ tối đa 16 plot cùng lúc; danh sách thì không giới hạn.
 | **Phóng to / Thu nhỏ** | Co giãn trục thời gian quanh cursor 1 |
 | **Cursor 1 / Cursor 2** | Hiện cursor chính và cursor đo; bật cursor nào thì cursor đó nhảy về giữa khung nhìn |
 | **◀ / ▶** | Đưa cursor 1 tới lần đổi giá trị trước hoặc sau của signal đang chọn |
+| **Hiện điểm sample** | Đánh dấu từng sample bằng một chấm, khi mức zoom đủ thưa |
 | **Bỏ plot / Xóa đồ thị** | Gỡ plot đang chọn, hoặc gỡ tất cả |
 | **Ảnh ▾** | Lưu đồ thị thành file PNG, hoặc chép vào clipboard |
 
 Tên signal nằm trên trục trái của từng plot, theo màu đường vẽ; tooltip hiện tên đầy đủ và
-đơn vị. Di chuyển cursor sẽ chọn frame tương ứng trong trace và ngược lại. Khi bật
+đơn vị. Di chuyển cursor sẽ chọn frame tương ứng trong trace và ngược lại. Kéo cursor thì
+cursor bám vào sample gần nhất của plot đang kéo; giữ **Shift** để đặt tự do. Phím **←** /
+**→** đưa cursor 1 qua từng sample của signal đang chọn. Đoạn đường nét đứt nghĩa là mất
+sample: giá trị bị giữ lâu hơn 1,5 chu kỳ gửi (cycle time trong DBC, hoặc chu kỳ đo được);
+signal gửi theo sự kiện không bao giờ vẽ nét đứt. Đoạn mất sample ngắn hơn vài pixel chỉ hiện khi
+phóng to. Khi bật
 **Cursor 2**, bảng readout hiện giá trị tại hai cursor, chênh lệch và Δt ở cuối toolbar.
 
 ### Workspace
