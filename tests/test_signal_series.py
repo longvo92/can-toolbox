@@ -125,3 +125,63 @@ def test_change_times_and_cursor_jumps(source):
     assert steady.next_change(0.0) is None
     empty = SignalSeries(ref=rpm.ref, time=np.zeros(0), values=np.zeros(0))
     assert not len(empty.change_times()) and empty.next_change(0.0) is None
+
+
+def _series(times, period=None):
+    from can_toolbox.canlog.signals import SignalSeries
+
+    times = np.asarray(times, dtype=float)
+    return SignalSeries(SignalRef(1, 0x100, "Engine", "Rpm"), times, np.arange(len(times), dtype=float),
+                        period=period)
+
+
+def test_period_is_measured_for_periodic_signals_only(source):
+    from can_toolbox.canlog.signals import estimate_period
+
+    rpm = source.series(SignalRef(1, 0x100, "Engine", "Rpm"))
+    assert rpm.period == pytest.approx(0.01)
+    pressure = source.series(SignalRef(1, 0x200, "Brake", "Pressure"))
+    assert pressure.period == pytest.approx(0.015)
+    # A few missed samples do not move the period; event-driven traffic has none.
+    assert estimate_period(np.array([0.0, 0.1, 0.2, 0.5, 0.6, 0.7, 0.8])) == pytest.approx(0.1)
+    assert estimate_period(np.array([0.0, 0.01, 0.4, 0.45, 1.3, 1.31, 2.9])) is None
+    assert estimate_period(np.array([0.0, 0.1, 0.2])) is None
+    assert estimate_period(np.zeros(6)) is None
+
+
+def test_dbc_cycle_time_wins_unless_the_signal_is_multiplexed():
+    from types import SimpleNamespace
+
+    from can_toolbox.canlog.signals import _signal_period
+
+    times = np.arange(10) * 0.02
+    message = SimpleNamespace(cycle_time=10)
+    assert _signal_period(message, SimpleNamespace(multiplexer_ids=None), times) == pytest.approx(0.01)
+    assert _signal_period(message, SimpleNamespace(multiplexer_ids=[1]), times) == pytest.approx(0.02)
+    assert _signal_period(SimpleNamespace(cycle_time=None), SimpleNamespace(multiplexer_ids=None),
+                          times) == pytest.approx(0.02)
+    assert _signal_period(SimpleNamespace(cycle_time=0), SimpleNamespace(multiplexer_ids=None),
+                          np.array([0.0, 0.01, 0.4, 0.45, 1.3])) is None
+
+
+def test_gaps_are_holds_longer_than_one_and_a_half_periods():
+    series = _series([0.0, 0.1, 0.2, 0.32, 0.5, 0.66, 1.0], period=0.1)
+    assert series.gaps().tolist() == [3, 4, 5]
+    assert _series([0.0, 0.5, 2.0]).gaps().tolist() == []  # no period, no gaps
+    assert _series([0.0], period=0.1).gaps().tolist() == []
+
+
+def test_nearest_and_stepped_samples():
+    series = _series([0.0, 0.1, 0.2, 0.4], period=0.1)
+    assert series.nearest_sample(-1.0) == 0.0
+    assert series.nearest_sample(0.14) == pytest.approx(0.1)
+    assert series.nearest_sample(0.15) == pytest.approx(0.1)  # a tie goes to the earlier sample
+    assert series.nearest_sample(0.31) == pytest.approx(0.4)
+    assert series.nearest_sample(9.0) == pytest.approx(0.4)
+    assert series.step_sample(0.1, forward=True) == pytest.approx(0.2)
+    assert series.step_sample(0.15, forward=True) == pytest.approx(0.2)
+    assert series.step_sample(0.1, forward=False) == pytest.approx(0.0)
+    assert series.step_sample(0.15, forward=False) == pytest.approx(0.1)
+    assert series.step_sample(0.4, forward=True) is None
+    assert series.step_sample(0.0, forward=False) is None
+    assert _series([]).nearest_sample(0.0) is None and _series([]).step_sample(0.0) is None

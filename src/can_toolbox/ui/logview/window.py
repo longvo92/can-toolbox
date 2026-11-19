@@ -132,11 +132,13 @@ class LogViewerWindow(QMainWindow):
         self.trace = build_trace_view(self.model)
         self.statistics = build_statistics_table()
         self.info = build_info_view()
-        from can_toolbox.ui.settings_dialog import cursor_width, line_width
+        from can_toolbox.ui.settings_dialog import SHOW_SAMPLES_KEY, cursor_width, line_width, show_samples
 
         self.graph = GraphPanel(self._binder, actions=self.graph_actions)
         self.graph.set_line_width(line_width(self._settings))
         self.graph.set_cursor_width(cursor_width(self._settings))
+        self.graph.set_show_samples(show_samples(self._settings))
+        self.graph.samples_toggled.connect(lambda shown: self._settings.setValue(SHOW_SAMPLES_KEY, shown))
         self.signal_panel = SignalPanel(self.signals, self._binder, self._settings)
         self.signal_browser = SignalBrowser(self._binder)
         self.logs_panel = LogsPanel(self.logs, self._binder)

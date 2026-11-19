@@ -8,6 +8,13 @@ under `## [Unreleased]` as they are merged; cutting a release moves them under a
 heading with its date. See [Build and Release](docs/architecture.md#build-and-release)
 for the procedure.
 
+## [Unreleased]
+
+### Added
+
+- **Sample dots and missed samples on the graph.** Every sample is marked with a dot while the zoom leaves room for them (**Show samples** on the graph toolbar turns them off). A hold longer than 1.5 send periods is drawn dashed, so lost frames stand out; the period is the DBC cycle time, or the measured one when the DBC has none. Signals sent on event are never dashed.
+- **Cursors land on samples.** Dragging a cursor snaps it to the nearest sample of the plot it is dragged in; hold **Shift** to place it freely. **←** / **→** step cursor 1 one sample at a time.
+
 ## [2.2.0] - 2026-11-18
 
 ### Added

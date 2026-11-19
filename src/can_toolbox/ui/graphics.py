@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
+import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QMimeData, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QFontMetrics, QImage
+from PySide6.QtGui import QAction, QFontMetrics, QImage, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -38,6 +39,36 @@ DEFAULT_LINE_WIDTH = 2
 # The cursor lines keep their own width: a curve and a measurement line are read differently.
 CURSOR_WIDTHS = (1, 2, 3, 4)
 DEFAULT_CURSOR_WIDTH = 2
+# Sample markers show only while neighbours sit at least this far apart on screen:
+# denser, they merge into a bar that hides the curve and costs a lot to draw.
+MIN_SAMPLE_SPACING_PX = 4
+
+
+def step_path(times: np.ndarray, values: np.ndarray, gaps: np.ndarray):
+    """Sample-and-hold path through the samples, with the holds over ``gaps`` left out.
+
+    Returns ``(x, y, connect)``: point ``2 i`` is sample ``i`` and point ``2 i + 1``
+    the end of its hold, so the hold of sample ``i`` is the segment from point
+    ``2 i`` to ``2 i + 1``. ``connect`` is ``"all"`` when nothing is cut out.
+    """
+    x = np.repeat(times, 2)[1:]
+    y = np.repeat(values, 2)[:-1]
+    if not len(gaps):
+        return x, y, "all"
+    connect = np.ones(len(x), dtype=bool)
+    connect[2 * gaps] = False
+    return x, y, connect
+
+
+def gap_path(times: np.ndarray, values: np.ndarray, gaps: np.ndarray):
+    """The holds over ``gaps`` as separate segments: ``(x, y, connect)`` in pairs."""
+    x = np.empty(2 * len(gaps))
+    y = np.empty(2 * len(gaps))
+    x[0::2], x[1::2] = times[gaps], times[gaps + 1]
+    y[0::2] = y[1::2] = values[gaps]
+    connect = np.zeros(len(x), dtype=bool)
+    connect[0::2] = True
+    return x, y, connect
 
 pg.setConfigOptions(antialias=False)
 
@@ -174,6 +205,7 @@ class GraphPanel(QWidget):
     clear_requested = Signal()
     range_changed = Signal(float, float)
     cursors_changed = Signal()
+    samples_toggled = Signal(bool)
 
     def __init__(self, binder: TextBinder, parent=None, *, actions: Sequence[QAction] = ()) -> None:
         super().__init__(parent)
@@ -189,6 +221,11 @@ class GraphPanel(QWidget):
         self._cursor_width = DEFAULT_CURSOR_WIDTH
         self.plotted: list = []  # (Entry, SignalSeries) pairs in display order
         self._focus = None
+        # The lane the user last dragged a cursor in: the sample keys step through it
+        # when the signal list has no single signal selected.
+        self._dragged_ref = None
+        self._show_samples = True
+        self._markers: list = []  # one marker item (or None) per lane
         self._theme = app_theme.current_theme()
         app_theme.manager.changed.connect(self.apply_theme)
 
@@ -266,6 +303,20 @@ class GraphPanel(QWidget):
                                                lambda: self.jump_to_change(forward=True))
         toolbar.addAction(self.prev_change_action)
         toolbar.addAction(self.next_change_action)
+        # Arrow keys walk cursor 1 sample by sample; no button, the keys are the point.
+        self.prev_sample_action = self._action("Previous sample", "prev-change",
+                                               lambda: self.step_sample(forward=False))
+        self.next_sample_action = self._action("Next sample", "next-change",
+                                               lambda: self.step_sample(forward=True))
+        for action, key in ((self.prev_sample_action, Qt.Key.Key_Left),
+                            (self.next_sample_action, Qt.Key.Key_Right)):
+            action.setShortcut(QKeySequence(key))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self.addAction(action)
+        self.samples_action = self._action("Show samples", "samples", self.set_show_samples)
+        self.samples_action.setCheckable(True)
+        self.samples_action.setChecked(self._show_samples)
+        toolbar.addAction(self.samples_action)
         toolbar.addSeparator()
         self.remove_action = self._action("Remove Plot", "remove-plot", self.remove_selected)
         self.clear_action = self._action("Clear Graph", "clear-graph", self.clear)
@@ -334,7 +385,7 @@ class GraphPanel(QWidget):
             centre = self._view_centre()
             if centre is not None:
                 low, high = self.x_range()
-                self.cursor_time[1] = centre + (high - low) / 10
+                self.cursor_time[1] = self._snap(centre + (high - low) / 10)
         for line in self._cursors[1]:
             line.setValue(self.cursor_time[1])
             line.setVisible(enabled)
@@ -350,6 +401,7 @@ class GraphPanel(QWidget):
         if visible:
             centre = self._view_centre()
             if centre is not None:
+                centre = self._snap(centre)
                 self.set_cursor(centre)
                 self.cursor_moved.emit(centre)
         for line in self._cursors[cursor]:
@@ -376,8 +428,6 @@ class GraphPanel(QWidget):
 
     def fit_y(self) -> None:
         """Autoscale every plot over the time range on screen, sample-and-hold included."""
-        import numpy as np
-
         low, high = self.x_range()
         if low == high:
             return
@@ -462,6 +512,37 @@ class GraphPanel(QWidget):
         self.cursor_moved.emit(target)
         return True
 
+    def step_sample(self, *, forward: bool) -> bool:
+        """Move cursor 1 to the next or previous sample of the signal being looked at."""
+        series = self._stepping_series()
+        if series is None:
+            return False
+        target = series.step_sample(self.cursor_time[0], forward=forward)
+        if target is None:
+            return False
+        low, high = self.x_range()
+        if high > low and not low <= target <= high:
+            # Stepping off screen pans the view, so the cursor never walks out of sight.
+            shift = target - (high if forward else low)
+            self._plots[0].setXRange(low + shift, high + shift, padding=0)
+        self.set_cursor(target)
+        self.cursor_moved.emit(target)
+        return True
+
+    def show_samples(self) -> bool:
+        return self._show_samples
+
+    def set_show_samples(self, shown: bool) -> None:
+        """Draw a marker on every sample, as long as the zoom leaves room for them."""
+        shown = bool(shown)
+        if self.samples_action.isChecked() != shown:
+            self.samples_action.setChecked(shown)
+        if shown == self._show_samples:
+            return
+        self._show_samples = shown
+        self._update_markers()
+        self.samples_toggled.emit(shown)
+
     def image(self) -> QImage:
         """The plots as they are on screen, at the canvas' own size."""
         return self.canvas.grab().toImage()
@@ -521,13 +602,15 @@ class GraphPanel(QWidget):
         self.scroll.setVisible(not empty)
         self.canvas.setMinimumHeight(PLOT_HEIGHT * len(self.series) + 30)
         for action in (self.clear_action, self.remove_action, self.prev_change_action,
-                       self.next_change_action, self.save_image_action, self.copy_image_action):
+                       self.next_change_action, self.prev_sample_action, self.next_sample_action,
+                       self.save_image_action, self.copy_image_action):
             action.setEnabled(not empty)
 
     def _rebuild(self) -> None:
         self.canvas.clear()
         self._plots = []
         self._cursors = [[], []]
+        self._markers = []
         first = None
         theme = self._theme
         for index, (entry, series) in enumerate(self.plotted):
@@ -553,19 +636,14 @@ class GraphPanel(QWidget):
                 top.setPen(pg.mkPen(theme.grid_line, width=1))
                 top.setStyle(showValues=False, tickLength=0)
                 plot.showAxis("top")
-            if len(series.time):
-                # Sample-and-hold: each value lasts until the next sample.
-                curve = pg.PlotDataItem(series.time, series.values, stepMode="right",
-                                        pen=pg.mkPen(color, width=self._line_width))
-                # Clip and downsample only once the curve sits in its view box.
-                plot.addItem(curve)
-                curve.setClipToView(True)
-                curve.setDownsampling(auto=True, method="peak")
+            self._markers.append(self._add_curves(plot, series, color) if len(series.time) else None)
             if first is None:
                 first = plot
                 plot.sigXRangeChanged.connect(
                     lambda _item, bounds: self.range_changed.emit(float(bounds[0]), float(bounds[1]))
                 )
+                plot.sigXRangeChanged.connect(self._update_markers)
+                plot.vb.sigResized.connect(self._update_markers)
             else:
                 plot.setXLink(first)
             if index < len(self.plotted) - 1:
@@ -584,6 +662,52 @@ class GraphPanel(QWidget):
             self._plots.append(plot)
         self._update_delta()
         self._show_canvas()
+        self._update_markers()
+
+    def _add_curves(self, plot, series, color: str):
+        """Sample-and-hold curve of ``series``; holds over missed samples are dashed.
+
+        Returns the item that carries the sample markers, filled by
+        :meth:`_update_markers` with what is on screen.
+        """
+        times, values = series.time, series.values
+        gaps = series.gaps()
+        x, y, connect = step_path(times, values, gaps)
+        curve = pg.PlotDataItem(x, y, connect=connect, pen=pg.mkPen(color, width=self._line_width))
+        # Clip and downsample only once the curve sits in its view box.
+        plot.addItem(curve)
+        curve.setClipToView(True)
+        curve.setDownsampling(auto=True, method="peak")
+        if len(gaps):
+            x, y, connect = gap_path(times, values, gaps)
+            dashed = pg.PlotDataItem(x, y, connect=connect, pen=pg.mkPen(
+                color, width=self._line_width, style=Qt.PenStyle.DashLine))
+            plot.addItem(dashed)
+            dashed.setClipToView(True)
+        markers = pg.PlotDataItem(pen=None, symbol="s", symbolSize=3 + 2 * self._line_width,
+                                  symbolPen=None, symbolBrush=color)
+        plot.addItem(markers)
+        return markers
+
+    def _update_markers(self, *_args) -> None:
+        """Put the markers of the samples on screen, or none when they would crowd.
+
+        Markers are filled from the visible slice only: a scatter of a whole
+        long log is slow to build and unreadable anyway.
+        """
+        if not self._plots:
+            return
+        low, high = self.x_range()
+        for plot, series, markers in zip(self._plots, self.series, self._markers):
+            if markers is None:
+                continue
+            start = int(np.searchsorted(series.time, low, side="left"))
+            stop = int(np.searchsorted(series.time, high, side="right"))
+            width = float(plot.vb.width())
+            if self._show_samples and stop > start and (stop - start) * MIN_SAMPLE_SPACING_PX <= width:
+                markers.setData(series.time[start:stop], series.values[start:stop])
+            else:
+                markers.setData([], [])
 
     def _label_lane(self, plot, series, color: str) -> None:
         """Name the lane on its left axis, elided to the height it has.
@@ -604,17 +728,45 @@ class GraphPanel(QWidget):
         if self._syncing:
             return
         seconds = float(line.value())
+        snap = getattr(line, "moving", False) and not (
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+        if snap:
+            # A drag lands on the nearest sample of the lane it happens in; Shift drags freely.
+            lane = self._cursors[cursor].index(line)
+            if lane < len(self.series):
+                series = self.series[lane]
+                self._dragged_ref = series.ref
+                nearest = series.nearest_sample(seconds)
+                if nearest is not None:
+                    seconds = nearest
         self._syncing = True
         try:
             self.cursor_time[cursor] = seconds
             for other in self._cursors[cursor]:
-                if other is not line:
+                if other is not line or other.value() != seconds:
                     other.setValue(seconds)
         finally:
             self._syncing = False
         self._update_delta()
         if cursor == 0:
             self.cursor_moved.emit(seconds)
+
+    def _stepping_series(self):
+        """The signal the sample keys walk: the selected one, else the last dragged lane."""
+        series = self.selected_series()
+        if series is None and self._dragged_ref is not None:
+            series = next((item for item in self.series if item.ref == self._dragged_ref), None)
+        return series
+
+    def _snap(self, seconds: float) -> float:
+        """``seconds`` moved onto the nearest sample of the signal being looked at.
+
+        A sample off screen is no snap target: the cursor stays where the user looks.
+        """
+        series = self._stepping_series() or next((item for item in self.series if len(item.time)), None)
+        nearest = series.nearest_sample(seconds) if series is not None else None
+        low, high = self.x_range()
+        return nearest if nearest is not None and low <= nearest <= high else seconds
 
     def _update_delta(self) -> None:
         """Both cursors moved or changed state: repaint Δt and tell the panel."""

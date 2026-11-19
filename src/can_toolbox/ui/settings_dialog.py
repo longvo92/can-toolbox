@@ -33,6 +33,7 @@ DEFAULT_LINE_WIDTH = 2
 CURSOR_WIDTH_KEY = "graph/cursor_width"
 CURSOR_WIDTHS = (1, 2, 3, 4)
 DEFAULT_CURSOR_WIDTH = 2
+SHOW_SAMPLES_KEY = "graph/show_samples"
 
 
 def migrate_tool_settings(settings: QSettings) -> None:
@@ -63,6 +64,11 @@ def cursor_width(settings: QSettings) -> int:
     """Measurement cursor thickness for the graph, in pixels."""
     value = settings.value(CURSOR_WIDTH_KEY, DEFAULT_CURSOR_WIDTH, type=int)
     return value if value in CURSOR_WIDTHS else DEFAULT_CURSOR_WIDTH
+
+
+def show_samples(settings: QSettings) -> bool:
+    """Whether the graph marks every sample (when the zoom leaves room for it)."""
+    return bool(settings.value(SHOW_SAMPLES_KEY, True, type=bool))
 
 
 # Workers keep running after the dialog closes; destroying a live QThread aborts the
